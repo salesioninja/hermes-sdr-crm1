@@ -17,7 +17,11 @@ import asyncio
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
+import hashlib
+import secrets
+import unicodedata
+import hmac
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request, Response, Depends, Cookie
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -68,6 +72,58 @@ app.add_middleware(
 )
 
 # -------------------------------------------------------------
+# Authentication Guard Middleware
+# -------------------------------------------------------------
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    
+    # Public endpoints that do not require login
+    PUBLIC_PATHS = {
+        "/painel",
+        "/painel/",
+        "/sdr",
+        "/sdr/",
+        "/painel/api/auth/login",
+        "/painel/api/auth/me",
+        "/painel/api/auth/logout",
+        "/painel/api/webhook/incoming",
+        "/docs",
+        "/openapi.json"
+    }
+    
+    # Protect all /painel/api/* endpoints (except public ones)
+    if path.startswith("/painel/api") and path not in PUBLIC_PATHS:
+        token = request.cookies.get("hermes_token")
+        if not token:
+            auth_header = request.headers.get("Authorization") or ""
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:].strip()
+            elif request.headers.get("X-Auth-Token"):
+                token = request.headers.get("X-Auth-Token").strip()
+            elif "token" in request.query_params:
+                token = request.query_params.get("token")
+                
+        username = None
+        if token:
+            try:
+                with get_db() as conn:
+                    username = validate_session(conn, token)
+            except Exception:
+                username = None
+                
+        if not username:
+            return JSONResponse(
+                status_code=401,
+                content={"error": "unauthorized", "message": "Acesso não autorizado. Faça login para continuar."}
+            )
+            
+        request.state.user = username
+
+    return await call_next(request)
+
+
+# -------------------------------------------------------------
 # Database Management
 # -------------------------------------------------------------
 def get_db():
@@ -75,8 +131,105 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
+
+# -------------------------------------------------------------
+# Security & Authentication Helpers
+# -------------------------------------------------------------
+def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
+    if not salt:
+        salt = secrets.token_hex(16)
+    hashed = hashlib.pbkdf2_hmac(
+        'sha256',
+        password.encode('utf-8'),
+        salt.encode('utf-8'),
+        100000
+    ).hex()
+    return hashed, salt
+
+def verify_password(password: str, hashed: str, salt: str) -> bool:
+    try:
+        expected, _ = hash_password(password, salt)
+        return hmac.compare_digest(expected, hashed)
+    except Exception:
+        return False
+
+def ensure_admin_user(conn):
+    admin_user = os.environ.get("HERMES_ADMIN_USER", "hermessdr").strip()
+    admin_pass = os.environ.get("HERMES_ADMIN_PASSWORD", "Max38171").strip()
+    if not admin_user or not admin_pass:
+        admin_user = "hermessdr"
+        admin_pass = "Max38171"
+    
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM users WHERE username = ?", (admin_user,))
+    row = cur.fetchone()
+    pw_hash, salt = hash_password(admin_pass)
+    now = datetime.now().isoformat()
+    if row:
+        cur.execute("UPDATE users SET password_hash = ?, salt = ? WHERE username = ?", (pw_hash, salt, admin_user))
+    else:
+        cur.execute("INSERT INTO users (username, password_hash, salt, created_at) VALUES (?, ?, ?, ?)",
+                    (admin_user, pw_hash, salt, now))
+    conn.commit()
+
+def create_session(conn, username: str, remember_me: bool = True) -> tuple[str, int]:
+    token = secrets.token_urlsafe(32)
+    now = datetime.now()
+    max_age_seconds = 30 * 86400 if remember_me else 86400
+    expires_at = datetime.fromtimestamp(now.timestamp() + max_age_seconds).isoformat()
+    now_iso = now.isoformat()
+    with conn:
+        conn.execute(
+            "INSERT INTO sessions (token, username, created_at, expires_at) VALUES (?, ?, ?, ?)",
+            (token, username, now_iso, expires_at)
+        )
+    return token, max_age_seconds
+
+def validate_session(conn, token: str) -> Optional[str]:
+    if not token:
+        return None
+    cur = conn.cursor()
+    cur.execute("SELECT username, expires_at FROM sessions WHERE token = ?", (token,))
+    row = cur.fetchone()
+    if not row:
+        return None
+    username, expires_at = row[0], row[1]
+    if expires_at and datetime.fromisoformat(expires_at) < datetime.now():
+        with conn:
+            conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        return None
+    return username
+
+def delete_session(conn, token: str):
+    if token:
+        with conn:
+            conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+
+class LoginPayload(BaseModel):
+    username: str
+    password: str
+    remember: Optional[bool] = True
+
 def init_db():
     with get_db() as conn:
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password_hash TEXT,
+            salt TEXT,
+            created_at TEXT
+        )
+        """)
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            token TEXT PRIMARY KEY,
+            username TEXT,
+            created_at TEXT,
+            expires_at TEXT
+        )
+        """)
+        ensure_admin_user(conn)
         conn.execute("""
         CREATE TABLE IF NOT EXISTS campaigns (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,7 +250,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS leads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             campaign_slug TEXT,
-            phone TEXT UNIQUE,
+            phone TEXT,
             name TEXT,
             category TEXT,
             source_file TEXT,
@@ -106,7 +259,14 @@ def init_db():
             message_sent TEXT,
             response TEXT,
             response_at TEXT,
-            error TEXT
+            error TEXT,
+            human_takeover INTEGER DEFAULT 0,
+            last_message_at TEXT,
+            city TEXT,
+            niche TEXT,
+            details TEXT,
+            created_at TEXT,
+            UNIQUE(campaign_slug, phone)
         )
         """)
         conn.execute("""
@@ -150,6 +310,26 @@ def init_db():
             conn.execute("ALTER TABLE leads ADD COLUMN human_takeover INTEGER DEFAULT 0")
         if "last_message_at" not in cols:
             conn.execute("ALTER TABLE leads ADD COLUMN last_message_at TEXT")
+        if "city" not in cols:
+            try:
+                conn.execute("ALTER TABLE leads ADD COLUMN city TEXT")
+            except Exception:
+                pass
+        if "niche" not in cols:
+            try:
+                conn.execute("ALTER TABLE leads ADD COLUMN niche TEXT")
+            except Exception:
+                pass
+        if "details" not in cols:
+            try:
+                conn.execute("ALTER TABLE leads ADD COLUMN details TEXT")
+            except Exception:
+                pass
+        if "created_at" not in cols:
+            try:
+                conn.execute("ALTER TABLE leads ADD COLUMN created_at TEXT")
+            except Exception:
+                pass
 
         # Default state
         defaults = {
@@ -447,6 +627,97 @@ async def on_startup():
 # -------------------------------------------------------------
 # REST API Endpoints
 # -------------------------------------------------------------
+
+# -------------------------------------------------------------
+# Authentication Endpoints
+# -------------------------------------------------------------
+@app.post("/painel/api/auth/login")
+async def auth_login(req: LoginPayload):
+    req_username = req.username.strip()
+    req_password = req.password.strip()
+    
+    init_db()
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT password_hash, salt FROM users WHERE username = ?", (req_username,))
+        row = cur.fetchone()
+        if not row:
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "message": "Usuário ou senha incorretos."}
+            )
+        
+        pw_hash, salt = row[0], row[1]
+        if not verify_password(req_password, pw_hash, salt):
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "message": "Usuário ou senha incorretos."}
+            )
+        
+        token, max_age = create_session(conn, req_username, req.remember if req.remember is not None else True)
+    
+    res = JSONResponse(
+        content={
+            "success": True,
+            "token": token,
+            "user": {"username": req_username}
+        }
+    )
+    res.set_cookie(
+        key="hermes_token",
+        value=token,
+        max_age=max_age,
+        expires=max_age,
+        path="/",
+        httponly=False,
+        samesite="lax",
+        secure=False
+    )
+    return res
+
+@app.get("/painel/api/auth/me")
+async def auth_me(request: Request):
+    user = getattr(request.state, "user", None)
+    if not user:
+        token = request.cookies.get("hermes_token")
+        if not token:
+            auth_header = request.headers.get("Authorization") or ""
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:].strip()
+            elif request.headers.get("X-Auth-Token"):
+                token = request.headers.get("X-Auth-Token").strip()
+            elif "token" in request.query_params:
+                token = request.query_params.get("token")
+        if token:
+            with get_db() as conn:
+                user = validate_session(conn, token)
+                
+    if user:
+        return {"authenticated": True, "user": {"username": user}}
+    return JSONResponse(status_code=401, content={"authenticated": False, "message": "Não autenticado."})
+
+@app.post("/painel/api/auth/logout")
+async def auth_logout(request: Request):
+    token = request.cookies.get("hermes_token")
+    if not token:
+        auth_header = request.headers.get("Authorization") or ""
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+        elif request.headers.get("X-Auth-Token"):
+            token = request.headers.get("X-Auth-Token").strip()
+            
+    if token:
+        try:
+            with get_db() as conn:
+                delete_session(conn, token)
+        except Exception:
+            pass
+            
+    res = JSONResponse(content={"success": True, "message": "Sessão encerrada com sucesso."})
+    res.delete_cookie(key="hermes_token", path="/")
+    res.delete_cookie(key="hermes_token", path="/painel")
+    return res
+
 @app.get("/painel/api/stats")
 async def get_stats():
     init_db()
@@ -685,16 +956,16 @@ async def manual_dispatch(payload: ManualDispatchRequest):
             conn.execute("""
             INSERT INTO leads (campaign_slug, phone, name, category, source_file, status, message_sent)
             VALUES ('lotes_manual_test', ?, ?, 'Testes', 'manual_input', 'PENDING', ?)
-            ON CONFLICT(phone) DO UPDATE SET 
-                campaign_slug = 'lotes_manual_test',
+            ON CONFLICT(campaign_slug, phone) DO UPDATE SET 
                 name = coalesce(nullif(excluded.name, ''), leads.name),
                 category = 'Testes',
                 source_file = 'manual_input',
+                status = 'PENDING',
                 message_sent = excluded.message_sent
             """, (phone, name, msg_rendered))
             conn.commit()
 
-            lead_row = conn.execute("SELECT id FROM leads WHERE phone = ?", (phone,)).fetchone()
+            lead_row = conn.execute("SELECT id FROM leads WHERE campaign_slug = 'lotes_manual_test' AND phone = ?", (phone,)).fetchone()
             lead_id = lead_row["id"] if lead_row else None
 
             if not payload.immediate:
@@ -855,37 +1126,37 @@ def find_lead_by_phone(conn, raw_phone: str):
     digits = re.sub(r'\D', '', raw_phone or '')
     if not digits:
         return None
-    # 1. Exact match
-    lead = conn.execute("SELECT * FROM leads WHERE phone = ?", (digits,)).fetchone()
-    if lead:
-        return lead
-    # 2. Match with 55 prefix
+        
     with_55 = digits if digits.startswith("55") else "55" + digits
-    lead = conn.execute("SELECT * FROM leads WHERE phone = ?", (with_55,)).fetchone()
-    if lead:
-        return lead
-    # 3. Brazilian 9th digit differences
-    if with_55.startswith("55") and len(with_55) == 13: # has 9th digit
-        ddd = with_55[2:4]
-        rest = with_55[5:]
-        without_9 = f"55{ddd}{rest}"
-        lead = conn.execute("SELECT * FROM leads WHERE phone = ?", (without_9,)).fetchone()
-        if lead:
-            return lead
-    elif with_55.startswith("55") and len(with_55) == 12: # lacks 9th digit
-        ddd = with_55[2:4]
-        rest = with_55[4:]
-        with_9 = f"55{ddd}9{rest}"
-        lead = conn.execute("SELECT * FROM leads WHERE phone = ?", (with_9,)).fetchone()
-        if lead:
-            return lead
-    # 4. Suffix match by last 8 digits
-    if len(digits) >= 8:
-        last8 = digits[-8:]
-        lead = conn.execute("SELECT * FROM leads WHERE phone LIKE ?", (f"%{last8}",)).fetchone()
-        if lead:
-            return lead
-    return None
+    variations = [digits, with_55]
+    
+    if with_55.startswith("55"):
+        if len(with_55) == 13: # 55 + DDD (2) + 9 (1) + 8 digits
+            ddd = with_55[2:4]
+            local8 = with_55[5:]
+            without_9 = f"55{ddd}{local8}"
+            variations.extend([without_9, without_9[2:], with_55[2:]])
+        elif len(with_55) == 12: # 55 + DDD (2) + 8 digits
+            ddd = with_55[2:4]
+            local8 = with_55[4:]
+            with_9 = f"55{ddd}9{local8}"
+            variations.extend([with_9, with_9[2:], with_55[2:]])
+            
+    last8 = digits[-8:] if len(digits) >= 8 else digits
+    placeholders = ",".join("?" for _ in variations)
+    
+    sql = f"""
+    SELECT * FROM leads 
+    WHERE phone IN ({placeholders}) OR phone LIKE ?
+    ORDER BY 
+        CASE WHEN status IN ('SENT', 'REPLIED', 'SCHEDULED') THEN 1 ELSE 2 END ASC,
+        coalesce(last_message_at, sent_at, created_at) DESC,
+        id DESC
+    LIMIT 1
+    """
+    params = list(variations) + [f"%{last8}"]
+    lead = conn.execute(sql, params).fetchone()
+    return lead
 
 async def generate_sdr_reply(lead: dict, incoming_text: str, conversation_history: list) -> str:
     lead_name = lead.get("name") or "Lead"
@@ -1370,11 +1641,177 @@ async def toggle_takeover(req: TakeoverRequest):
 # -------------------------------------------------------------
 # Lead Hunter Endpoints (Google Maps, CNPJ, Instagram)
 # -------------------------------------------------------------
+
+# -------------------------------------------------------------
+# Semantic Search Expansion & Niche Synonyms Dictionary
+# -------------------------------------------------------------
+NICHE_SYNONYMS = {
+    'fisioterapia': [
+        'Fisioterapia', 'Pilates', 'Fisioterapeuta', 'Clinica de Fisioterapia', 
+        'Studio de Pilates', 'Osteopatia', 'RPG Fisioterapia', 'Reabilitacao'
+    ],
+    'pilates': [
+        'Pilates', 'Studio de Pilates', 'Fisioterapia', 'Fisioterapeuta'
+    ],
+    'odonto': [
+        'Dentista', 'Clinica Odontologica', 'Consultorio Odontologico', 'Ortodontia', 'Odontologia'
+    ],
+    'dentista': [
+        'Dentista', 'Clinica Odontologica', 'Consultorio Odontologico', 'Ortodontia', 'Odontologia'
+    ],
+    'odontologia': [
+        'Dentista', 'Clinica Odontologica', 'Consultorio Odontologico', 'Ortodontia', 'Odontologia'
+    ],
+    'academia': [
+        'Academia', 'Crossfit', 'Treinamento Funcional', 'Studio Fitness', 'Musculacao'
+    ],
+    'fitness': [
+        'Academia', 'Crossfit', 'Treinamento Funcional', 'Studio Fitness'
+    ],
+    'estetica': [
+        'Clinica de Estetica', 'Esteticista', 'Salao de Beleza', 'Espaco de Beleza', 'Biomedicina Estetica'
+    ],
+    'beleza': [
+        'Salao de Beleza', 'Clinica de Estetica', 'Espaco de Beleza', 'Cabeleireiro'
+    ],
+    'psicologia': [
+        'Psicologo', 'Psicologa', 'Clinica de Psicologia', 'Consultorio de Psicologia'
+    ],
+    'psicologo': [
+        'Psicologo', 'Psicologa', 'Clinica de Psicologia', 'Consultorio de Psicologia'
+    ],
+    'veterinaria': [
+        'Clinica Veterinaria', 'Veterinario', 'Hospital Veterinaria', 'Pet Shop'
+    ],
+    'pet': [
+        'Pet Shop', 'Clinica Veterinaria', 'Banho e Tosa'
+    ],
+    'advogado': [
+        'Advogado', 'Escritorio de Advocacia', 'Advocacia', 'Advogada'
+    ],
+    'advocacia': [
+        'Advogado', 'Escritorio de Advocacia', 'Advocacia', 'Advogada'
+    ],
+    'imobiliaria': [
+        'Imobiliaria', 'Corretor de Imoveis', 'Imoveis'
+    ],
+    'contabilidade': [
+        'Escritorio de Contabilidade', 'Contador', 'Contabilidade'
+    ],
+    'escola': [
+        'Escola', 'Colegio', 'Educacao Infantil', 'Centro Educacional'
+    ],
+    'mecanica': [
+        'Oficina Mecanica', 'Auto Center', 'Auto Eletrica', 'Centro Automotivo'
+    ],
+    'medica': [
+        'Clinica Medica', 'Consultorio Medico', 'Policlinica', 'Centro Medico'
+    ],
+    'medico': [
+        'Clinica Medica', 'Consultorio Medico', 'Policlinica', 'Centro Medico'
+    ]
+}
+
+
+INCOMPATIBLE_CATEGORIES = {
+    'odonto': ['fisioterapia', 'fisioterapeuta', 'pilates', 'rpg', 'osteopatia', 'estetica', 'salao de beleza', 'cabeleireiro', 'manicure', 'barbearia', 'mecanica', 'oficina', 'auto', 'advocac', 'advogad', 'veterin', 'pet', 'ginecolog', 'obstetric', 'pediatra', 'restaurante', 'imobiliaria', 'contabil', 'contabilidade', 'otica', 'farmacia', 'academia', 'musculacao'],
+    'dentista': ['fisioterapia', 'fisioterapeuta', 'pilates', 'rpg', 'osteopatia', 'estetica', 'salao de beleza', 'cabeleireiro', 'manicure', 'barbearia', 'mecanica', 'oficina', 'auto', 'advocac', 'advogad', 'veterin', 'pet', 'ginecolog', 'obstetric', 'pediatra', 'restaurante', 'imobiliaria', 'contabil', 'contabilidade', 'otica', 'farmacia', 'academia', 'musculacao'],
+    'odontologia': ['fisioterapia', 'fisioterapeuta', 'pilates', 'rpg', 'osteopatia', 'estetica', 'salao de beleza', 'cabeleireiro', 'manicure', 'barbearia', 'mecanica', 'oficina', 'auto', 'advocac', 'advogad', 'veterin', 'pet', 'ginecolog', 'obstetric', 'pediatra', 'restaurante', 'imobiliaria', 'contabil', 'contabilidade', 'otica', 'farmacia', 'academia', 'musculacao'],
+    'fisioterapia': ['odonto', 'dentista', 'ortodont', 'mecanica', 'oficina', 'auto', 'advocac', 'advogad', 'veterin', 'pet', 'salao de beleza', 'cabeleireiro', 'barbearia', 'restaurante', 'imobiliaria', 'contabil', 'contabilidade', 'otica', 'farmacia'],
+    'pilates': ['odonto', 'dentista', 'ortodont', 'mecanica', 'oficina', 'auto', 'advocac', 'advogad', 'veterin', 'pet', 'salao de beleza', 'cabeleireiro', 'barbearia', 'restaurante', 'imobiliaria', 'contabil', 'contabilidade', 'otica', 'farmacia'],
+    'advogado': ['odonto', 'dentista', 'fisioterapia', 'pilates', 'mecanica', 'oficina', 'auto', 'salao', 'estetica', 'veterin', 'pet', 'restaurante', 'medico', 'clinica', 'escola'],
+    'advocacia': ['odonto', 'dentista', 'fisioterapia', 'pilates', 'mecanica', 'oficina', 'auto', 'salao', 'estetica', 'veterin', 'pet', 'restaurante', 'medico', 'clinica', 'escola'],
+    'mecanica': ['odonto', 'dentista', 'fisioterapia', 'advocac', 'salao', 'estetica', 'veterin', 'restaurante', 'medico', 'clinica'],
+    'imobiliaria': ['odonto', 'dentista', 'fisioterapia', 'advocac', 'salao', 'estetica', 'mecanica', 'oficina', 'veterin', 'restaurante'],
+    'veterinaria': ['odonto', 'dentista', 'fisioterapia', 'advocac', 'salao', 'estetica', 'mecanica', 'oficina', 'restaurante'],
+    'pet': ['odonto', 'dentista', 'fisioterapia', 'advocac', 'salao', 'estetica', 'mecanica', 'oficina', 'restaurante']
+}
+
+def normalize_text_simple(text: str) -> str:
+    nfkd = unicodedata.normalize('NFKD', (text or '').lower())
+    return "".join([c for c in nfkd if not unicodedata.combining(c)]).strip()
+
+def calculate_relevance(title: str, category: str, default_niche: str) -> tuple[str, int]:
+    norm_n = normalize_text_simple(default_niche)
+    norm_t = normalize_text_simple(title)
+    norm_c = normalize_text_simple(category)
+    
+    # 1. Termos positivos (sinonimos do nicho pesquisado)
+    terms = [t for t in re.split(r'[\s,/]+', norm_n) if len(t) > 3]
+    for key, syns in NICHE_SYNONYMS.items():
+        if key in norm_n:
+            terms.extend([normalize_text_simple(s) for s in syns])
+            
+    terms = list(set(terms))
+    has_positive = any(term in norm_t or term in norm_c for term in terms)
+
+    # 2. Termos incompativeis (outros ramos que o Google Maps tenta empurrar)
+    negative_terms = []
+    for key, negs in INCOMPATIBLE_CATEGORIES.items():
+        if key in norm_n:
+            negative_terms.extend([normalize_text_simple(ng) for ng in negs])
+    negative_terms = list(set(negative_terms))
+
+    has_negative = any(neg in norm_c or neg in norm_t for neg in negative_terms)
+
+    if has_positive and not has_negative:
+        return 'high', 100
+    elif has_positive and has_negative:
+        # Ex.: Clinica Integrada Odonto e Fisio
+        return 'medium', 70
+    elif has_negative:
+        # Incompativel evidente (ex.: Fisioterapia em busca de Dentista)
+        return 'incompatible', 0
+    else:
+        broad_indicators = ['clinica', 'consultorio', 'saude', 'centro', 'espaco', 'instituto', 'doutor', 'dra', 'dr', 'studio']
+        for ind in broad_indicators:
+            if ind in norm_t or ind in norm_c:
+                return 'medium', 50
+        return 'broad', 20
+
+def generate_deep_keywords(niche: str, location: str, extra_keywords: str = "", deep_search: bool = True) -> list[str]:
+    norm_niche = normalize_text_simple(niche)
+    keywords = []
+    
+    # 1. Termo direto
+    keywords.append(f"{niche} em {location}")
+    keywords.append(f"{niche} {location}")
+    
+    if deep_search:
+        matched_synonyms = []
+        for key, syns in NICHE_SYNONYMS.items():
+            if key in norm_niche:
+                matched_synonyms.extend(syns)
+                
+        if not matched_synonyms:
+            if not norm_niche.startswith('clinica'):
+                matched_synonyms.append(f"Clinica de {niche}")
+            matched_synonyms.append(niche)
+            
+        for syn in matched_synonyms:
+            kw = f"{syn} em {location}"
+            if kw not in keywords:
+                keywords.append(kw)
+            if len(keywords) >= 5:
+                break
+                
+    if extra_keywords:
+        for extra in extra_keywords.split(','):
+            extra = extra.strip()
+            if extra:
+                kw = f"{extra} em {location}"
+                if kw not in keywords:
+                    keywords.append(kw)
+
+    return keywords[:6]
+
 class HunterSearchRequest(BaseModel):
     source: str = 'maps'  # 'maps', 'cnpj', 'instagram', 'ninja'
     niche: str
     location: str
-    limit: int = 15
+    limit: int = 25
+    deep_search: bool = True
+    extra_keywords: Optional[str] = None
 
 class HunterImportRequest(BaseModel):
     campaign_slug: str
@@ -1383,6 +1820,8 @@ class HunterImportRequest(BaseModel):
 
 def parse_ninja_csv_leads(csv_text: str, default_city: str = "", default_niche: str = "") -> List[dict]:
     cleaned_leads = []
+    seen_phones = set()
+    seen_names = set()
     init_db()
     with get_db() as conn:
         reader = csv.DictReader(io.StringIO(csv_text))
@@ -1394,6 +1833,17 @@ def parse_ninja_csv_leads(csv_text: str, default_city: str = "", default_niche: 
             digits = re.sub(r'\D', '', raw_phone)
             if (len(digits) == 10 or len(digits) == 11) and not digits.startswith('55'):
                 digits = '55' + digits
+
+            norm_title = "".join(c for c in normalize_text_simple(title) if c.isalnum())
+            if digits and digits in seen_phones:
+                continue
+            if norm_title and norm_title in seen_names:
+                continue
+
+            if digits:
+                seen_phones.add(digits)
+            if norm_title:
+                seen_names.add(norm_title)
 
             address = (row.get('complete_address') or row.get('address') or '').strip()
             website = (row.get('website') or '').strip()
@@ -1422,6 +1872,9 @@ def parse_ninja_csv_leads(csv_text: str, default_city: str = "", default_niche: 
                 if row_db:
                     exists = True
 
+            rel_level, rel_score = calculate_relevance(title, category, default_niche)
+
+            is_strict = (rel_level in ('high', 'medium') and rel_level != 'incompatible')
             cleaned_leads.append({
                 'name': title,
                 'phone': digits,
@@ -1436,8 +1889,12 @@ def parse_ninja_csv_leads(csv_text: str, default_city: str = "", default_niche: 
                 'review_count': review_count,
                 'address': address,
                 'already_in_db': exists,
-                'valid_phone': len(digits) in (12, 13)
+                'valid_phone': len(digits) in (12, 13),
+                'relevance': rel_level,
+                'relevance_score': rel_score,
+                'is_strict_match': is_strict
             })
+    cleaned_leads.sort(key=lambda x: (x['relevance_score'], 1 if x['valid_phone'] else 0), reverse=True)
     return cleaned_leads
 
 @app.get('/painel/api/hunter/ninja/jobs')
@@ -1469,12 +1926,26 @@ async def hunter_ninja_job_leads(job_id: str):
             if csv_res.status_code != 200:
                 raise HTTPException(status_code=404, detail="Resultados do job não disponíveis ou não encontrados")
 
-            leads = parse_ninja_csv_leads(csv_res.text)
+            default_niche = ""
+            default_city = ""
+            if "🎯" in job_name:
+                parts = job_name.split("🎯", 1)[1].strip()
+                if "(" in parts and ")" in parts:
+                    default_niche = parts.split("(", 1)[0].strip()
+                    default_city = parts.split("(", 1)[1].split(")", 1)[0].strip()
+            elif "Hermes" in job_name and "(" in job_name and ")" in job_name:
+                parts = job_name.split("Hermes", 1)[1].strip()
+                default_niche = parts.split("(", 1)[0].replace("🎯", "").strip()
+                default_city = parts.split("(", 1)[1].split(")", 1)[0].strip()
+
+            leads = parse_ninja_csv_leads(csv_res.text, default_city=default_city, default_niche=default_niche)
             return {
                 'leads': leads,
                 'total': len(leads),
                 'job_id': job_id,
                 'job_name': job_name,
+                'niche': default_niche,
+                'location': default_city,
                 'source': 'GOOGLE MAPS (NINJA)'
             }
     except HTTPException:
@@ -1492,13 +1963,19 @@ async def hunter_search(req: HunterSearchRequest):
 
     # 1. GOOGLE MAPS via Native Scraper Ninja
     if req.source in ('maps', 'ninja'):
-        job_name = f"Hermes — {niche} ({location})"
-        keyword = f"{niche} em {location}"
+        keywords = generate_deep_keywords(
+            niche=niche,
+            location=location,
+            extra_keywords=req.extra_keywords or "",
+            deep_search=req.deep_search
+        )
+        depth = 80 if req.deep_search else min(max(req.limit, 15), 40)
+        job_name = f"Hermes 🎯 {niche} ({location})" + (" [Deep]" if req.deep_search else "")
         payload = {
             'name': job_name,
-            'keywords': [keyword],
+            'keywords': keywords,
             'lang': 'pt',
-            'depth': min(max(req.limit, 10), 40),
+            'depth': depth,
             'fast_mode': False,
             'email': False,
             'max_time': 180
@@ -1518,9 +1995,9 @@ async def hunter_search(req: HunterSearchRequest):
                 if not job_id:
                     raise HTTPException(status_code=500, detail="ID de job inválido retornado pelo Scraper Ninja")
 
-                # Poll for completion (up to ~45 seconds)
+                # Poll for completion (up to ~125 seconds)
                 completed = False
-                for _ in range(20):
+                for _ in range(50):
                     await asyncio.sleep(2.5)
                     status_res = await client.get(f"{SCRAPER_NINJA_URL}/api/v1/jobs/{job_id}")
                     if status_res.status_code == 200:
@@ -1536,10 +2013,10 @@ async def hunter_search(req: HunterSearchRequest):
                         'leads': [],
                         'total': 0,
                         'source': 'GOOGLE MAPS (NINJA)',
-                        'query': keyword,
+                        'query': ", ".join(keywords),
                         'job_id': job_id,
                         'status': 'working',
-                        'message': f"O robô Scraper Ninja está minerando em background (Job ID: {job_id}). Você pode carregar o resultado na aba 'Jobs Anteriores' em instantes."
+                        'message': f"O robô Scraper Ninja ainda está minerando no Google Maps (Job ID: {job_id}). Você pode carregar o resultado na aba 'Jobs Anteriores' em instantes."
                     }
 
                 # Download and parse CSV
@@ -1552,7 +2029,9 @@ async def hunter_search(req: HunterSearchRequest):
                     'leads': cleaned_leads,
                     'total': len(cleaned_leads),
                     'source': 'GOOGLE MAPS (NINJA)',
-                    'query': keyword,
+                    'query': ", ".join(keywords),
+                    'keywords_used': keywords,
+                    'deep_search': req.deep_search,
                     'job_id': job_id,
                     'status': 'ok'
                 }
@@ -1679,23 +2158,62 @@ async def hunter_import(req: HunterImportRequest):
             ''', (slug, name, '{Olá|Oi}{nome}, tudo bem? Aqui é o Salesio. Vi seu contato na nossa rede de negócios.', now_iso))
 
         for item in leads:
-            phone = re.sub(r'\D', '', item.get('phone', ''))
-            if not phone:
+            raw_phone = item.get('phone', '')
+            digits = re.sub(r'\D', '', str(raw_phone))
+            if not digits:
                 continue
+            if len(digits) in (10, 11) and not digits.startswith("55"):
+                digits = "55" + digits
+
             name = item.get('name', '').strip()
             city = item.get('city', '').strip()
             niche = item.get('niche', '').strip()
+            details = item.get('details', '')
+            if isinstance(details, (dict, list)):
+                import json
+                details_str = json.dumps(details, ensure_ascii=False)
+            else:
+                details_str = str(details)
+
+            category = niche or 'Lead Hunter'
 
             try:
                 conn.execute('''
-                INSERT INTO leads (campaign_slug, phone, name, city, niche, status, created_at)
-                VALUES (?, ?, ?, ?, ?, 'PENDING', ?)
-                ''', (slug, phone, name, city, niche, now_iso))
+                INSERT INTO leads (campaign_slug, phone, name, category, city, niche, details, source_file, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'scraper_ninja', 'PENDING', ?)
+                ''', (slug, digits, name, category, city, niche, details_str, now_iso))
                 imported += 1
             except sqlite3.IntegrityError:
                 duplicates += 1
+            except Exception as ex:
+                print(f"Erro inserindo lead {digits}: {ex}")
 
         conn.commit()
+
+        # Also save physical CSV file on VPS in DOWNLOADS_DIR/lotes_hunter/
+        try:
+            hunter_backup_dir = os.path.join(DOWNLOADS_DIR, "lotes_hunter")
+            os.makedirs(hunter_backup_dir, exist_ok=True)
+            camp_filename = f"{slug}.csv"
+            backup_csv_path = os.path.join(hunter_backup_dir, camp_filename)
+            with open(backup_csv_path, "w", newline="", encoding="utf-8-sig") as bf:
+                w = csv.writer(bf, delimiter=";")
+                w.writerow(["Nome da Empresa / Profissional", "WhatsApp (Disparo 55+DDD+9)", "Telefone Formatado", "Nicho", "Cidade", "Endereco"])
+                for item in leads:
+                    p = re.sub(r'\D', '', str(item.get('phone', '')))
+                    if len(p) in (10, 11) and not p.startswith("55"):
+                        p = "55" + p
+                    fmt_p = f"+55 ({p[2:4]}) {p[4:9]}-{p[9:]}" if len(p) == 13 else (f"+55 ({p[2:4]}) {p[4:8]}-{p[8:]}" if len(p) == 12 else p)
+                    w.writerow([
+                        item.get('name', ''),
+                        f'="{p}"',
+                        fmt_p,
+                        item.get('niche', ''),
+                        item.get('city', ''),
+                        str(item.get('details', ''))
+                    ])
+        except Exception as ex_b:
+            print(f"Erro salvando backup CSV: {ex_b}")
 
     return {'success': True, 'imported': imported, 'duplicates': duplicates}
 

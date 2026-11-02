@@ -50,9 +50,134 @@
 
 <div id="app" v-cloak class="min-h-screen flex flex-col">
 
+  <!-- SESSÃO LOADING STATE -->
+  <div v-if="authChecking" class="min-h-screen flex flex-col items-center justify-center p-4 bg-[#090d16] text-center">
+    <div class="w-12 h-12 border-4 border-emerald-500/20 border-t-emerald-400 rounded-full animate-spin mx-auto mb-4"></div>
+    <div class="flex items-center space-x-2 text-slate-300 font-bold text-sm">
+      <i data-lucide="shield" class="w-4 h-4 text-emerald-400"></i>
+      <span>Hermes SDR Security</span>
+    </div>
+    <p class="text-xs text-slate-500 mt-1">Validando credenciais da sessão...</p>
+  </div>
+
+  <!-- TELA DE LOGIN MODERNA (HERMES SDR) -->
+  <div v-else-if="!isAuthenticated" class="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-[#090d16]">
+    <!-- Ambient glowing backdrop blobs -->
+    <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="absolute bottom-1/4 right-1/4 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="absolute top-1/3 left-1/4 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+    <!-- Login Card -->
+    <div class="w-full max-w-md glass rounded-2xl p-6 sm:p-8 border border-slate-700/60 shadow-2xl shadow-black/80 relative z-10">
+      
+      <!-- Logo & Branding -->
+      <div class="text-center mb-6">
+        <div class="w-14 h-14 mx-auto mb-3.5 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/25">
+          <i data-lucide="shield-check" class="w-7 h-7 text-slate-950 stroke-[2.5]"></i>
+        </div>
+        <div class="flex items-center justify-center space-x-2">
+          <h1 class="text-2xl font-extrabold tracking-tight text-white">HERMES <span class="text-emerald-400">SDR</span></h1>
+          <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">v2.0</span>
+        </div>
+        <p class="text-xs text-slate-400 mt-1">Acesso Restrito ao Painel de Operações</p>
+      </div>
+
+      <!-- Error Alert -->
+      <div v-if="loginError" class="mb-5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start space-x-2.5 text-xs text-rose-300">
+        <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-400 shrink-0 mt-0.5"></i>
+        <span>{{ loginError }}</span>
+      </div>
+
+      <!-- Form -->
+      <form @submit.prevent="handleLogin" class="space-y-4">
+        <!-- Usuário -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Usuário</label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+              <i data-lucide="user" class="w-4 h-4"></i>
+            </div>
+            <input 
+              v-model="loginForm.username" 
+              type="text" 
+              autocomplete="username" 
+              required 
+              placeholder="Digite seu usuário..."
+              class="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700/80 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+            />
+          </div>
+        </div>
+
+        <!-- Senha -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="block text-xs font-semibold text-slate-300">Senha</label>
+          </div>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+              <i data-lucide="lock" class="w-4 h-4"></i>
+            </div>
+            <input 
+              v-model="loginForm.password" 
+              :type="showPassword ? 'text' : 'password'" 
+              autocomplete="current-password" 
+              required 
+              placeholder="Digite sua senha..."
+              class="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700/80 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+            />
+            <button 
+              type="button" 
+              @click="showPassword = !showPassword; $nextTick(() => { if (window.lucide) lucide.createIcons(); })" 
+              class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white transition">
+              <i :data-lucide="showPassword ? 'eye-off' : 'eye'" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Remember Me Checkbox -->
+        <div class="flex items-center justify-between text-xs pt-1">
+          <label class="flex items-center space-x-2 text-slate-400 hover:text-slate-300 cursor-pointer select-none">
+            <input 
+              v-model="loginForm.remember" 
+              type="checkbox" 
+              class="w-4 h-4 rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-slate-950"
+            />
+            <span>Manter conectado (30 dias)</span>
+          </label>
+        </div>
+
+        <!-- Submit Button -->
+        <button 
+          type="submit" 
+          :disabled="loginLoading"
+          class="w-full mt-2 py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 flex items-center justify-center space-x-2 shadow-lg shadow-emerald-500/20 transition disabled:opacity-50 disabled:cursor-not-allowed">
+          <span v-if="!loginLoading" class="flex items-center space-x-2">
+            <span>Acessar Painel</span>
+            <i data-lucide="arrow-right" class="w-4 h-4 stroke-[2.5]"></i>
+          </span>
+          <span v-else class="flex items-center space-x-2">
+            <div class="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+            <span>Autenticando...</span>
+          </span>
+        </button>
+      </form>
+
+      <!-- Footer Info -->
+      <div class="mt-6 pt-5 border-t border-slate-800/80 text-center">
+        <p class="text-[11px] text-slate-500 flex items-center justify-center space-x-1.5">
+          <i data-lucide="shield" class="w-3.5 h-3.5 text-emerald-400"></i>
+          <span>Autenticação criptografada • Hermes SDR Engine</span>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAINEL DASHBOARD PRINCIPAL (QUANDO AUTENTICADO) -->
+  <div v-else class="min-h-screen flex flex-col">
+
   <!-- TOPBAR -->
   <header class="border-b border-slate-800/80 bg-[#0c121e]/95 sticky top-0 z-40 backdrop-blur-md">
-    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+    <div class="max-w-[1440px] mx-auto px-3 sm:px-6">
       
       <!-- Top Row -->
       <div class="h-14 sm:h-16 flex items-center justify-between">
@@ -92,64 +217,77 @@
             </span>
           </button>
 
-          <!-- Switch View: Lead Hunter -->
+          <!-- Switch View: Buscar Leads -->
           <button @click="currentView = 'hunter'; $nextTick(() => { if (window.lucide) lucide.createIcons(); })" 
                   class="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition relative"
                   :class="currentView === 'hunter' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'">
-            <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
-            <span>Lead Hunter</span>
+            <i data-lucide="search" class="w-3.5 h-3.5"></i>
+            <span>Buscar Leads</span>
             <span class="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-cyan-400/20 text-cyan-300 border border-cyan-400/30">
               NOVO
             </span>
           </button>
         </div>
 
-        <!-- Desktop Action Buttons -->
-        <div class="hidden md:flex items-center space-x-2.5">
+        <!-- Desktop Action Buttons (Refined & Compact) -->
+        <div class="hidden lg:flex items-center space-x-1.5 sm:space-x-2">
           <!-- WhatsApp Dot -->
-          <div class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-xs"
+          <div class="flex items-center space-x-1.5 px-2 py-1.5 rounded-lg border text-xs"
                :class="stats.whatsapp_connected ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300' : 'bg-red-950/30 border-red-500/30 text-red-300'">
             <span class="w-2 h-2 rounded-full" :class="stats.whatsapp_connected ? 'bg-emerald-400 animate-ping' : 'bg-red-400'"></span>
-            <span class="font-medium">{{ stats.whatsapp_connected ? 'Conectado' : 'Desconectado' }}</span>
+            <span class="font-medium text-[11px]">{{ stats.whatsapp_connected ? 'Conectado' : 'Desconectado' }}</span>
           </div>
 
           <!-- Mode Pill -->
           <button @click="controlAction('toggle_dry_run')"
-                  class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition"
+                  class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition"
                   :class="stats.dry_run ? 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'">
             <i :data-lucide="stats.dry_run ? 'eye' : 'zap'" class="w-3.5 h-3.5"></i>
-            <span>{{ stats.dry_run ? 'Modo Simulação' : 'Modo WhatsApp Real' }}</span>
+            <span class="text-[11px]">{{ stats.dry_run ? 'Simulação' : 'WhatsApp Real' }}</span>
           </button>
 
           <!-- Botão IA SDR Auto-Responder -->
           <button @click="controlAction('toggle_ai_reply')"
-                  class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition"
+                  class="flex items-center space-x-1.5 px-2 py-1.5 rounded-lg border text-xs font-semibold transition"
                   :class="stats.ai_auto_reply ? 'bg-purple-500/10 border-purple-500/30 text-purple-300 hover:bg-purple-500/20' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'"
                   :title="stats.ai_auto_reply ? 'Hermes responde leads automaticamente com IA' : 'Respostas automáticas de leads pausadas'">
             <i data-lucide="bot" class="w-3.5 h-3.5"></i>
-            <span>{{ stats.ai_auto_reply ? 'IA Responder: ATIVO' : 'IA Responder: PAUSADO' }}</span>
+            <span class="text-[11px]">{{ stats.ai_auto_reply ? 'IA: Ativo' : 'IA: Pausado' }}</span>
           </button>
 
           <!-- Botão Lista Manual / Teste -->
           <button @click="openManualModal"
-                  class="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition flex items-center space-x-1.5 shadow-sm">
+                  class="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition flex items-center space-x-1 shadow-sm">
             <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
-            <span>+ Teste Manual</span>
+            <span class="text-[11px]">+ Teste</span>
           </button>
 
           <!-- Botão Sincronizar Listas -->
-          <button @click="syncLeads" :disabled="syncing"
-                  class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 transition flex items-center space-x-1 border border-slate-700">
+          <button @click="syncLeads" :disabled="syncing" title="Atualizar dados"
+                  class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 transition flex items-center border border-slate-700">
             <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': syncing}"></i>
-            <span>{{ syncing ? 'Sincronizando...' : 'Atualizar' }}</span>
           </button>
 
-          <!-- Link Ninja -->
+          <!-- Link WhatsApp -->
           <a href="https://wa.me/5546999765576" target="_blank"
-             class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-slate-950 transition flex items-center space-x-1">
+             class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-slate-950 transition flex items-center space-x-1">
             <i data-lucide="message-square" class="w-3.5 h-3.5 stroke-[2.5]"></i>
-            <span>WhatsApp</span>
+            <span class="text-[11px]">WhatsApp</span>
           </a>
+
+          <!-- Operador & Sair Desktop -->
+          <div class="flex items-center space-x-1.5 border-l border-slate-800 pl-2">
+            <div class="flex items-center space-x-1 text-xs text-slate-300 bg-slate-900/90 px-2 py-1 rounded-lg border border-slate-800">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span class="font-bold text-white text-[11px]">{{ currentUser?.username || 'hermessdr' }}</span>
+            </div>
+            <button @click="handleLogout" 
+                    title="Sair do Sistema"
+                    class="px-2 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-semibold transition flex items-center space-x-1">
+              <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+              <span class="text-[11px]">Sair</span>
+            </button>
+          </div>
         </div>
 
         <!-- Mobile Header Right Quick Actions -->
@@ -169,6 +307,11 @@
           <!-- Quick Sync Mobile -->
           <button @click="syncLeads" :disabled="syncing" class="p-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
             <i data-lucide="refresh-cw" class="w-4 h-4" :class="{'animate-spin': syncing}"></i>
+          </button>
+
+          <!-- Mobile Logout -->
+          <button @click="handleLogout" title="Sair do Sistema" class="p-2 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
           </button>
         </div>
 
@@ -194,7 +337,7 @@
   </header>
 
   <!-- MAIN CONTAINER -->
-  <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex-1 w-full flex flex-col">
+  <main class="max-w-[1440px] mx-auto px-3 sm:px-6 py-4 sm:py-6 flex-1 w-full flex flex-col">
 
     <!-- VIEW 1: DASHBOARD & CAMPANHAS -->
     <div v-show="currentView === 'dashboard'" class="space-y-4 sm:space-y-6 w-full">
@@ -626,11 +769,11 @@
           <!-- Card Footer: Time & One-Click WhatsApp Action -->
           <div class="flex items-center justify-between pt-2 border-t border-slate-800/60 text-[11px] text-slate-400">
             <span>{{ lead.sent_at ? formatTime(lead.sent_at) : 'Aguardando envio' }}</span>
-            <a :href="'https://wa.me/' + lead.phone" target="_blank" 
-               class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold flex items-center space-x-1 shadow transition">
-              <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-              <span>Abrir WhatsApp</span>
-            </a>
+            <button type="button" @click="openLiveChatForPhone(lead.phone)"
+                    class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center space-x-1 shadow transition active:scale-95">
+              <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
+              <span>Chat ao Vivo</span>
+            </button>
           </div>
 
         </div>
@@ -715,11 +858,11 @@
         <!-- Modal Footer: Quick Link to WhatsApp -->
         <div class="px-4 py-3 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
           <span class="text-[11px] text-slate-400">Quer intervir manualmente?</span>
-          <a :href="'https://wa.me/' + activeLead?.phone" target="_blank"
-             class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs transition flex items-center space-x-1">
-            <i data-lucide="message-circle" class="w-3.5 h-3.5 stroke-[2.5]"></i>
-            <span>Abrir no WhatsApp</span>
-          </a>
+          <button type="button" @click="isLeadModalOpen = false; openLiveChatForPhone(activeLead?.phone)"
+                  class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition flex items-center space-x-1 shadow active:scale-95">
+            <i data-lucide="message-square" class="w-3.5 h-3.5 stroke-[2.5]"></i>
+            <span>Abrir no Chat ao Vivo</span>
+          </button>
         </div>
 
       </div>
@@ -830,9 +973,11 @@
                     {{ res.details }}
                   </span>
                 </div>
-                <a :href="'https://wa.me/' + res.phone" target="_blank" class="px-2 py-1 rounded bg-emerald-600 text-slate-950 font-bold shrink-0">
-                  Chat
-                </a>
+                <button type="button" @click="openLiveChatForPhone(res.phone)" 
+                        class="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shrink-0 flex items-center space-x-1 cursor-pointer transition active:scale-95 shadow">
+                  <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
+                  <span>Chat ao Vivo</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1202,11 +1347,11 @@
       <div class="glass rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div class="flex items-center space-x-3.5">
           <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 border border-cyan-500/30 text-cyan-400 flex items-center justify-center shrink-0 shadow-lg">
-            <i data-lucide="crosshair" class="w-5 h-5 sm:w-6 sm:h-6"></i>
+            <i data-lucide="search" class="w-5 h-5 sm:w-6 sm:h-6"></i>
           </div>
           <div>
             <div class="flex items-center space-x-2">
-              <h2 class="text-base sm:text-xl font-bold text-white tracking-tight">Lead Hunter — Mineração Autônoma</h2>
+              <h2 class="text-base sm:text-xl font-bold text-white tracking-tight">Buscar Leads — Mineração Autônoma</h2>
               <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center space-x-1">
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                 <span>MOTOR NINJA (MAPS) & IA</span>
@@ -1404,6 +1549,30 @@
             </button>
           </div>
 
+          <!-- Opções de Busca Profunda & Varredura Ampla -->
+          <div class="md:col-span-12 pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <label class="flex items-center space-x-2 cursor-pointer select-none">
+              <input type="checkbox" v-model="hunterDeepSearch" class="w-4 h-4 rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-emerald-500">
+              <span class="text-xs font-semibold text-slate-200 flex items-center space-x-1.5">
+                <i data-lucide="layers" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span>Busca Profunda & Varredura Ampla</span>
+                <span class="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">RECOMENDADO</span>
+              </span>
+            </label>
+            <div class="flex items-center space-x-2">
+              <span class="text-[11px] text-slate-400 hidden lg:inline">Varre sinônimos e especialidades (ex: Fisioterapia + Pilates + Osteopatia) para não perder nenhuma clínica.</span>
+              <button type="button" @click="hunterShowAdvanced = !hunterShowAdvanced; $nextTick(() => { if (window.lucide) lucide.createIcons(); })" class="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center space-x-1">
+                <span>{{ hunterShowAdvanced ? 'Ocultar termos extras' : '+ Termos extras' }}</span>
+                <i :data-lucide="hunterShowAdvanced ? 'chevron-up' : 'chevron-down'" class="w-3 h-3"></i>
+              </button>
+            </div>
+          </div>
+
+          <div v-if="hunterShowAdvanced" class="md:col-span-12 space-y-1 bg-slate-950/50 p-3 rounded-xl border border-slate-800/80">
+            <label class="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Palavras-chave personalizadas adicionais (opcional):</label>
+            <input type="text" v-model="hunterExtraKeywords" placeholder="Ex: RPG, Osteopatia, Acupuntura, Reabilitação (separados por vírgula)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+          </div>
+
         </form>
       </div>
 
@@ -1431,42 +1600,67 @@
       </div>
 
       <!-- Results Table -->
-      <div v-else-if="hunterResults.length > 0" class="glass rounded-xl sm:rounded-2xl border border-slate-800 overflow-hidden shadow-2xl space-y-0">
+      <div v-if="hunterResults.length > 0" class="glass rounded-xl sm:rounded-2xl border border-slate-800 overflow-hidden shadow-2xl space-y-0">
         
-        <!-- Table Header Toolbar -->
-        <div class="p-4 sm:p-5 border-b border-slate-800 bg-slate-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div class="flex items-center space-x-3">
+        <!-- Table Header Toolbar (100% full-width bar) -->
+        <div class="p-4 sm:p-5 border-b border-slate-800 bg-slate-900/80 flex flex-col lg:flex-row lg:items-center justify-between gap-3 w-full">
+          
+          <!-- Left: Selection status & badges -->
+          <div class="flex items-center space-x-3 flex-wrap gap-y-1">
             <input type="checkbox" @change="toggleSelectAllHunter"
-                   :checked="selectedHunterLeads.length === hunterResults.length && hunterResults.length > 0"
+                   :checked="filteredHunterResults.length > 0 && selectedHunterLeads.length === filteredHunterResults.length"
                    class="w-4 h-4 accent-cyan-500 cursor-pointer rounded">
             <div>
               <span class="text-xs sm:text-sm font-bold text-white">
-                {{ hunterResults.length }} Leads Minerados
+                {{ filteredHunterResults.length }} Leads Minerados
               </span>
               <span class="text-xs text-cyan-400 font-semibold ml-2">
                 ({{ selectedHunterLeads.length }} selecionados)
               </span>
             </div>
+            <span v-if="hunterKeywordsUsed && hunterKeywordsUsed.length > 1" class="hidden sm:inline-flex text-[10px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-medium items-center space-x-1">
+              <i data-lucide="check" class="w-3 h-3 text-emerald-400"></i>
+              <span>Varredura profunda ({{ hunterKeywordsUsed.length }} termos combinados)</span>
+            </span>
           </div>
 
-          <!-- Import Controls -->
-          <div class="flex items-center space-x-2 flex-wrap gap-2">
+          <!-- Right: Search Filter + Campaign Picker + Import Button -->
+          <div class="flex items-center space-x-2.5 flex-wrap gap-2">
+            <!-- Quick Filter Input inside results table -->
+            <div class="relative w-full sm:w-56">
+              <input type="text" v-model="hunterFilterText"
+                     placeholder="Filtrar por nome ou tel..."
+                     class="w-full bg-slate-950 border border-slate-700 rounded-lg pl-7 pr-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-slate-500 absolute left-2 top-2"></i>
+            </div>
+
             <!-- Target Campaign Selector -->
-            <select v-model="hunterTargetCampaign" class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
-              <option value="lotes_hunter_captacao">Campanha: Captação Hunter</option>
+            <select v-model="hunterTargetCampaign" class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 max-w-[280px] font-medium truncate">
+              <option value="new_auto">➕ Nova Campanha: {{ autoCampaignName }}</option>
+              <option value="lotes_hunter_captacao">Campanha: Captação Hunter Geral</option>
               <option v-for="c in campaigns" :key="c.slug" :value="c.slug">
                 Campanha: {{ c.name }}
               </option>
             </select>
 
+            <!-- Download CSV Button -->
+            <button @click="downloadHunterCSV" :disabled="filteredHunterResults.length === 0"
+                    class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-semibold text-xs border border-slate-700 shadow transition flex items-center space-x-1.5 active:scale-95"
+                    title="Baixar planilha CSV para o seu computador">
+              <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span>Baixar CSV</span>
+            </button>
+
             <!-- Import Button -->
             <button @click="importHunterLeads" :disabled="selectedHunterLeads.length === 0 || hunterImporting"
-                    class="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 text-slate-950 font-bold text-xs shadow-lg transition flex items-center space-x-1.5 active:scale-95">
+                    class="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 text-slate-950 font-bold text-xs shadow-lg transition flex items-center space-x-1.5 active:scale-95"
+                    title="Salvar direto no banco de dados para disparar no Hermes SDR">
               <i data-lucide="download" class="w-3.5 h-3.5 fill-slate-950" :class="{'animate-spin': hunterImporting}"></i>
               <span>{{ hunterImporting ? 'Importando...' : ('Importar (' + selectedHunterLeads.length + ')') }}</span>
             </button>
           </div>
-        </div>
+
+        </div><!-- /Table Header Toolbar -->
 
         <!-- Success Toast after Import -->
         <div v-if="hunterImportSuccess" class="p-4 bg-emerald-950/40 border-b border-emerald-500/30 flex items-center justify-between text-xs text-emerald-300">
@@ -1494,7 +1688,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-800/60">
-              <tr v-for="(lead, idx) in hunterResults" :key="idx"
+              <tr v-for="(lead, idx) in filteredHunterResults" :key="idx"
                   :class="selectedHunterLeads.includes(lead) ? 'bg-slate-800/40' : 'hover:bg-slate-900/40'"
                   class="transition">
                 <!-- Checkbox -->
@@ -1505,7 +1699,21 @@
                 
                 <!-- Nome -->
                 <td class="p-3.5">
-                  <div class="font-bold text-slate-200">{{ lead.name }}</div>
+                  <div class="font-bold text-slate-200 flex items-center space-x-1.5 flex-wrap">
+                    <span>{{ lead.name }}</span>
+                    <span v-if="lead.relevance === 'high'" class="px-1.5 py-0.2 rounded bg-emerald-500/20 text-[9px] font-extrabold text-emerald-300 border border-emerald-500/30">
+                      ALTA RELEVÂNCIA
+                    </span>
+                    <span v-else-if="lead.relevance === 'medium'" class="px-1.5 py-0.2 rounded bg-cyan-500/20 text-[9px] font-semibold text-cyan-300 border border-cyan-500/30">
+                      RELACIONADO
+                    </span>
+                    <span v-else-if="lead.relevance === 'incompatible'" class="px-1.5 py-0.2 rounded bg-rose-500/20 text-[9px] font-extrabold text-rose-300 border border-rose-500/30">
+                      ⚠️ OUTRO RAMO (SUGESTÃO GOOGLE)
+                    </span>
+                    <span v-else class="px-1.5 py-0.2 rounded bg-slate-800 text-[9px] font-medium text-slate-400">
+                      SUGESTÃO AMPLA
+                    </span>
+                  </div>
                   <div class="text-[10px] text-slate-400 flex items-center space-x-2 mt-0.5 flex-wrap">
                     <span class="px-1.5 py-0.2 rounded bg-slate-800 text-[9px] font-mono uppercase text-cyan-300 font-semibold">{{ lead.source }}</span>
                     <span v-if="lead.rating" class="text-amber-400 font-bold flex items-center">
@@ -1566,7 +1774,7 @@
       </div>
 
       <!-- Empty State before first search -->
-      <div v-else class="glass rounded-xl p-10 text-center text-slate-500 border border-slate-800 space-y-2">
+      <div v-else-if="!hunterSearching && hunterResults.length === 0" class="glass rounded-xl p-10 text-center text-slate-500 border border-slate-800 space-y-2">
         <i data-lucide="radar" class="w-10 h-10 mx-auto text-slate-600 mb-2"></i>
         <h4 class="text-sm font-bold text-slate-300">Nenhuma busca realizada ainda</h4>
         <p class="text-xs text-slate-500 max-w-sm mx-auto">
@@ -1631,14 +1839,53 @@
     <p>Hermes AI Agent • Sistema de Prospecção Ativa & Agendamento Integrado ao Google Calendar • Salesio Ninja</p>
   </footer>
 
+  </div><!-- /v-else dashboard -->
+
 </div>
 
 <script>
+  // Intercept all fetch requests to inject Authorization header and catch 401s
+  const _originalFetch = window.fetch;
+  window.fetch = async function(resource, init = {}) {
+    const token = localStorage.getItem('hermes_token');
+    if (token) {
+      init.headers = init.headers || {};
+      if (init.headers instanceof Headers) {
+        if (!init.headers.has('Authorization')) {
+          init.headers.set('Authorization', 'Bearer ' + token);
+        }
+      } else if (typeof init.headers === 'object') {
+        if (!init.headers['Authorization']) {
+          init.headers['Authorization'] = 'Bearer ' + token;
+        }
+      }
+    }
+    init.credentials = init.credentials || 'include';
+    const response = await _originalFetch(resource, init);
+    const urlStr = typeof resource === 'string' ? resource : (resource.url || '');
+    if (response.status === 401 && !urlStr.includes('/painel/api/auth/login') && !urlStr.includes('/painel/api/auth/me')) {
+      window.dispatchEvent(new CustomEvent('hermes:unauthorized'));
+    }
+    return response;
+  };
+
   const { createApp } = Vue;
 
   createApp({
     data() {
       return {
+        isAuthenticated: false,
+        authChecking: true,
+        currentUser: null,
+        loginForm: {
+          username: '',
+          password: '',
+          remember: true
+        },
+        showPassword: false,
+        loginLoading: false,
+        loginError: '',
+        statsInterval: null,
         stats: {},
         campaigns: [],
         leads: [],
@@ -1672,8 +1919,14 @@
         hunterSearching: false,
         hunterResults: [],
         selectedHunterLeads: [],
-        hunterTargetCampaign: 'lotes_hunter_captacao',
+        hunterTargetCampaign: 'new_auto',
+        hunterDeepSearch: true,
+        hunterExtraKeywords: '',
+        hunterShowAdvanced: false,
+        hunterKeywordsUsed: [],
+        hunterFilterText: '',
         hunterImporting: false,
+        hunterOnlyStrict: false,
         hunterImportSuccess: null,
         hunterNinjaJobs: [],
         hunterSelectedJobId: '',
@@ -1700,6 +1953,26 @@
       };
     },
     computed: {
+      autoCampaignName() {
+        const niche = (this.hunterNiche || 'Leads').trim();
+        const loc = (this.hunterLocation || 'Região').split(',')[0].trim();
+        const now = new Date();
+        const d = String(now.getDate()).padStart(2, '0');
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const y = now.getFullYear();
+        return `${niche} - ${loc} (${d}/${m}/${y})`;
+      },
+      filteredHunterResults() {
+        let list = this.hunterResults || [];
+        if (this.hunterOnlyStrict) {
+          list = list.filter(l => l.is_strict_match);
+        }
+        if (this.hunterFilterText && this.hunterFilterText.trim()) {
+          const q = this.hunterFilterText.toLowerCase().trim();
+          list = list.filter(l => (l.name && l.name.toLowerCase().includes(q)) || (l.phone && l.phone.includes(q)) || (l.niche && l.niche.toLowerCase().includes(q)) || (l.address && l.address.toLowerCase().includes(q)));
+        }
+        return list;
+      },
       filteredChatConversations() {
         let list = this.chatConversations || [];
         if (this.chatFilter === 'replied') {
@@ -1734,29 +2007,112 @@
         return list;
       }
     },
-    mounted() {
+    async mounted() {
       window.addEventListener('resize', () => {
         this.isDesktop = window.innerWidth >= 1024;
       });
-      this.fetchStats();
-      this.fetchCampaigns();
-      this.fetchLeads();
-      this.fetchNinjaJobs();
-      this.initLiveStream();
-      if (window.location.hash === '#chat') {
-        this.openLiveChatView();
-      }
-      setInterval(() => {
-        this.fetchStats();
-        if (this.currentView === 'livechat' && !this.loadingConversations) {
-          this.loadChatConversations();
-        }
-      }, 5000);
-      this.$nextTick(() => {
-        lucide.createIcons();
+      window.addEventListener('hermes:unauthorized', () => {
+        this.isAuthenticated = false;
+        this.loginError = 'Sua sessão expirou ou foi encerrada. Faça login novamente.';
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
       });
+      await this.checkAuth();
     },
     methods: {
+      async checkAuth() {
+        this.authChecking = true;
+        try {
+          const res = await fetch('/painel/api/auth/me');
+          if (res.ok) {
+            const data = await res.json();
+            if (data.authenticated) {
+              this.isAuthenticated = true;
+              this.currentUser = data.user;
+              this.initDashboardAfterAuth();
+            } else {
+              this.isAuthenticated = false;
+            }
+          } else {
+            this.isAuthenticated = false;
+          }
+        } catch (e) {
+          this.isAuthenticated = false;
+        } finally {
+          this.authChecking = false;
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        }
+      },
+      initDashboardAfterAuth() {
+        this.fetchStats();
+        this.fetchCampaigns();
+        this.fetchLeads();
+        this.fetchNinjaJobs();
+        this.initLiveStream();
+        if (window.location.hash === '#chat') {
+          this.openLiveChatView();
+        }
+        if (!this.statsInterval) {
+          this.statsInterval = setInterval(() => {
+            if (this.isAuthenticated) {
+              this.fetchStats();
+              if (this.currentView === 'livechat' && !this.loadingConversations) {
+                this.loadChatConversations();
+              }
+            }
+          }, 5000);
+        }
+        this.$nextTick(() => {
+          if (window.lucide) lucide.createIcons();
+        });
+      },
+      async handleLogin() {
+        if (!this.loginForm.username || !this.loginForm.password) {
+          this.loginError = 'Por favor, preencha o usuário e a senha.';
+          return;
+        }
+        this.loginLoading = true;
+        this.loginError = '';
+        try {
+          const res = await fetch('/painel/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: this.loginForm.username,
+              password: this.loginForm.password,
+              remember: this.loginForm.remember
+            })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            localStorage.setItem('hermes_token', data.token);
+            this.isAuthenticated = true;
+            this.currentUser = data.user;
+            this.loginForm.password = '';
+            this.initDashboardAfterAuth();
+          } else {
+            this.loginError = data.message || 'Usuário ou senha inválidos.';
+          }
+        } catch (e) {
+          this.loginError = 'Erro ao conectar ao servidor. Verifique sua conexão.';
+        } finally {
+          this.loginLoading = false;
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        }
+      },
+      async handleLogout() {
+        try {
+          await fetch('/painel/api/auth/logout', { method: 'POST' });
+        } catch (e) {}
+        localStorage.removeItem('hermes_token');
+        if (this.eventSource) {
+          try { this.eventSource.close(); } catch (e) {}
+          this.eventSource = null;
+        }
+        this.isAuthenticated = false;
+        this.currentUser = null;
+        this.loginError = '';
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+      },
       async fetchStats() {
         try {
           const res = await fetch('/painel/api/stats');
@@ -1872,7 +2228,8 @@
       },
       formatTime(iso) {
         if (!iso) return '-';
-        const d = new Date(iso);
+        const d = this.parseIsoDate(iso);
+        if (!d) return '-';
         return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       },
       changePage(p) {
@@ -1947,8 +2304,13 @@
             await this.fetchLeads();
             this.$nextTick(() => lucide.createIcons());
           } else {
-            const err = await res.json();
-            alert('Erro no disparo: ' + (err.detail || 'Falha ao processar'));
+            const textErr = await res.text();
+            let msg = textErr;
+            try {
+              const parsed = JSON.parse(textErr);
+              msg = parsed.detail || parsed.message || textErr;
+            } catch(e) {}
+            alert('Erro no disparo: ' + msg);
           }
         } catch (e) {
           alert('Erro de conexão: ' + e.message);
@@ -1991,6 +2353,43 @@
           this.loadingConversations = false;
           this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
         }
+      },
+      async openLiveChatForPhone(phone) {
+        if (!phone) return;
+        this.isManualModalOpen = false;
+        this.isLeadModalOpen = false;
+        this.currentView = 'livechat';
+        this.chatFilter = 'all';
+
+        const clean = String(phone).replace(/\D/g, '');
+        await this.loadChatConversations();
+
+        let found = (this.chatConversations || []).find(c => {
+          const cp = String(c.phone || '').replace(/\D/g, '');
+          if (cp === clean) return true;
+          if (clean.length >= 8 && cp.endsWith(clean.slice(-8))) return true;
+          if (cp.length >= 8 && clean.endsWith(cp.slice(-8))) return true;
+          return false;
+        });
+
+        if (found) {
+          await this.selectChat(found);
+        } else {
+          await new Promise(r => setTimeout(r, 350));
+          await this.loadChatConversations();
+          found = (this.chatConversations || []).find(c => {
+            const cp = String(c.phone || '').replace(/\D/g, '');
+            return cp === clean || (clean.length >= 8 && cp.endsWith(clean.slice(-8))) || (cp.length >= 8 && clean.endsWith(cp.slice(-8)));
+          });
+          if (found) {
+            await this.selectChat(found);
+          }
+        }
+
+        this.$nextTick(() => {
+          if (window.lucide) lucide.createIcons();
+          this.scrollToBottom();
+        });
       },
       async selectChat(c) {
         this.activeChatLead = c;
@@ -2078,10 +2477,23 @@
           console.error('Erro ao alternar modo de atendimento:', e);
         }
       },
+      parseIsoDate(iso) {
+        if (!iso) return null;
+        try {
+          let s = String(iso).trim();
+          if (!s.includes('Z') && !s.includes('+') && !s.slice(10).includes('-')) {
+            s += 'Z';
+          }
+          return new Date(s);
+        } catch(e) {
+          return new Date(iso);
+        }
+      },
       formatChatTime(iso) {
         if (!iso) return '';
         try {
-          const d = new Date(iso);
+          const d = this.parseIsoDate(iso);
+          if (!d) return '';
           const now = new Date();
           if (d.toDateString() === now.toDateString()) {
             return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -2094,7 +2506,8 @@
       formatMessageTime(iso) {
         if (!iso) return '';
         try {
-          const d = new Date(iso);
+          const d = this.parseIsoDate(iso);
+          if (!d) return '';
           return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         } catch (e) {
           return '';
@@ -2139,7 +2552,9 @@
           if (res.ok) {
             const data = await res.json();
             this.hunterResults = data.leads || [];
-            this.selectedHunterLeads = this.hunterResults.filter(l => l.valid_phone && !l.already_in_db);
+            if (data.niche) this.hunterNiche = data.niche;
+            if (data.location) this.hunterLocation = data.location;
+            this.selectedHunterLeads = this.hunterResults.filter(l => l.valid_phone && (l.is_strict_match || !data.niche) && !l.already_in_db);
             const jobObj = this.hunterNinjaJobs.find(j => j.ID === this.hunterSelectedJobId);
             const jName = (jobObj && jobObj.Name) || data.job_name || 'Job selecionado';
             this.hunterJobNotice = 'Leads carregados do Scraper Ninja (' + this.hunterResults.length + ' encontrados na busca: "' + jName + '")';
@@ -2178,13 +2593,16 @@
               source: this.hunterSource,
               niche: this.hunterNiche,
               location: this.hunterLocation,
-              limit: 25
+              limit: 25,
+              deep_search: this.hunterDeepSearch,
+              extra_keywords: this.hunterExtraKeywords
             })
           });
           if (res.ok) {
             const data = await res.json();
             this.hunterResults = data.leads || [];
-            this.selectedHunterLeads = this.hunterResults.filter(l => l.valid_phone && !l.already_in_db);
+            this.hunterKeywordsUsed = data.keywords_used || [];
+            this.selectedHunterLeads = this.hunterResults.filter(l => l.valid_phone && l.is_strict_match && !l.already_in_db);
             if (data.message) {
               this.hunterJobNotice = data.message;
             }
@@ -2201,28 +2619,137 @@
         }
       },
       toggleSelectAllHunter() {
-        if (this.selectedHunterLeads.length === this.hunterResults.length) {
-          this.selectedHunterLeads = [];
+        const visibleLeads = this.filteredHunterResults;
+        const allSelected = visibleLeads.length > 0 && visibleLeads.every(l => this.selectedHunterLeads.includes(l));
+        if (allSelected) {
+          this.selectedHunterLeads = this.selectedHunterLeads.filter(l => !visibleLeads.includes(l));
         } else {
-          this.selectedHunterLeads = [...this.hunterResults];
+          for (const l of visibleLeads) {
+            if (!this.selectedHunterLeads.includes(l)) {
+              this.selectedHunterLeads.push(l);
+            }
+          }
         }
+      },
+      downloadHunterCSV() {
+        const leads = this.selectedHunterLeads.length > 0 ? this.selectedHunterLeads : this.filteredHunterResults;
+        if (!leads || leads.length === 0) {
+          alert('Nenhum lead para exportar.');
+          return;
+        }
+        const header = ['Nome da Empresa / Profissional', 'WhatsApp (Disparo 55+DDD+9)', 'Telefone Formatado', 'Nicho', 'Cidade', 'Endereco', 'Website / Link'];
+        const rows = leads.map(l => {
+          let rawDigits = String(l.phone || '').replace(/\D/g, '');
+          if (rawDigits && (rawDigits.length === 10 || rawDigits.length === 11) && !rawDigits.startsWith('55')) {
+            rawDigits = '55' + rawDigits;
+          }
+          
+          let fmtPhone = '';
+          if (rawDigits.startsWith('55') && rawDigits.length === 13) {
+            fmtPhone = `+55 (${rawDigits.slice(2,4)}) ${rawDigits.slice(4,9)}-${rawDigits.slice(9)}`;
+          } else if (rawDigits.startsWith('55') && rawDigits.length === 12) {
+            fmtPhone = `+55 (${rawDigits.slice(2,4)}) ${rawDigits.slice(4,8)}-${rawDigits.slice(8)}`;
+          } else if (rawDigits.length === 11) {
+            fmtPhone = `(${rawDigits.slice(0,2)}) ${rawDigits.slice(2,7)}-${rawDigits.slice(7)}`;
+          } else {
+            fmtPhone = rawDigits;
+          }
+
+          // Force text formula in Excel so it NEVER collapses into 5,547E+12!
+          const wppDisparo = rawDigits ? `="${rawDigits}"` : '""';
+          const nicho = l.niche || l.category || this.hunterNiche || 'Geral';
+          const cidade = l.city || this.hunterLocation || '';
+
+          // Parse JSON address
+          let endereco = '';
+          if (l.details) {
+            try {
+              const d = typeof l.details === 'string' ? JSON.parse(l.details) : l.details;
+              const parts = [];
+              if (d.street) parts.push(d.street);
+              if (d.borough) parts.push(d.borough);
+              if (d.postal_code) parts.push(d.postal_code);
+              endereco = parts.join(', ') || String(l.details);
+            } catch (e) {
+              endereco = String(l.details);
+            }
+          }
+          if (!endereco && l.address) endereco = l.address;
+
+          const website = l.website || l.link || '';
+
+          return [
+            `"${(l.name || '').replace(/"/g, '""')}"`,
+            wppDisparo,
+            `"${fmtPhone.replace(/"/g, '""')}"`,
+            `"${(nicho || '').replace(/"/g, '""')}"`,
+            `"${(cidade || '').replace(/"/g, '""')}"`,
+            `"${(endereco || '').replace(/"/g, '""')}"`,
+            `"${(website || '').replace(/"/g, '""')}"`
+          ];
+        });
+
+        const csvContent = '\uFEFF' + [header.join(';'), ...rows.map(r => r.join(';'))].join('\r\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+
+        // Exact pattern: Dentista_Salto_do_Lontra_02-11-2026.csv
+        const now = new Date();
+        const d = String(now.getDate()).padStart(2, '0');
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const y = now.getFullYear();
+        const dateStr = `${d}-${m}-${y}`;
+
+        const cleanN = (this.hunterNiche || 'Leads').trim().replace(/[\s/]+/g, '_');
+        const cleanL = (this.hunterLocation || 'Regiao').split(',')[0].trim().replace(/[\s/]+/g, '_');
+
+        a.download = `${cleanN}_${cleanL}_${dateStr}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
       },
       async importHunterLeads() {
         if (this.selectedHunterLeads.length === 0 || this.hunterImporting) return;
         this.hunterImporting = true;
         this.hunterImportSuccess = null;
         try {
+          let slug = this.hunterTargetCampaign;
+          let campName = null;
+
+          if (slug === 'new_auto' || !slug) {
+            const cleanN = (this.hunterNiche || 'leads').trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+            const cleanL = (this.hunterLocation || 'regiao').split(',')[0].trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+            const now = new Date();
+            const d = String(now.getDate()).padStart(2, '0');
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const y = now.getFullYear();
+            slug = `camp_${cleanN}_${cleanL}_${d}_${m}_${y}_${Date.now().toString().slice(-4)}`;
+            campName = this.autoCampaignName;
+          }
+
           const res = await fetch('/painel/api/hunter/import', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              campaign_slug: this.hunterTargetCampaign,
+              campaign_slug: slug,
+              campaign_name: campName,
               leads: this.selectedHunterLeads
             })
           });
+          const textRes = await res.text();
+          let data = {};
+          try {
+            data = JSON.parse(textRes);
+          } catch(e) {
+            data = { detail: textRes };
+          }
+
           if (res.ok) {
-            const data = await res.json();
-            this.hunterImportSuccess = `Sucesso! ${data.imported} novos leads importados para a campanha (${data.duplicates} duplicados ignorados).`;
+            const finalCampName = campName || 'campanha';
+            this.hunterImportSuccess = `${data.imported} leads importados com sucesso na campanha "${finalCampName}"! (${data.duplicates} já existiam na base)`;
             await this.fetchStats();
             await this.fetchCampaigns();
             await this.fetchLeads();
@@ -2233,11 +2760,10 @@
             });
             this.selectedHunterLeads = [];
           } else {
-            const err = await res.json();
-            alert('Erro ao importar: ' + (err.detail || 'Falha ao salvar leads'));
+            alert('Erro ao importar: ' + (data.detail || 'Falha ao salvar leads'));
           }
         } catch (e) {
-          alert('Erro de conexão: ' + e.message);
+          alert('Erro de comunicação: ' + e.message);
         } finally {
           this.hunterImporting = false;
           this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
@@ -2246,7 +2772,9 @@
       initLiveStream() {
         if (this.eventSource) return;
         try {
-          this.eventSource = new EventSource('/painel/api/chat/stream');
+          const token = localStorage.getItem('hermes_token') || '';
+            const streamUrl = token ? `/painel/api/chat/stream?token=${encodeURIComponent(token)}` : '/painel/api/chat/stream';
+            this.eventSource = new EventSource(streamUrl);
           
           const handleIncoming = (data) => {
             if (!data) return;

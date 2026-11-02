@@ -48,6 +48,10 @@ count_*.py
 parse_*.py
 clean_*.py
 export_*.py
+dump_*.py
+mig*.py
+regerar_*.py
+reorganizar_*.py
 find_*.py
 setup_*.py
 switch_*.py

@@ -91,6 +91,17 @@
               {{ (stats.total_scheduled || 0) + (stats.total_replies || 0) }}
             </span>
           </button>
+
+          <!-- Switch View: Lead Hunter -->
+          <button @click="currentView = 'hunter'; $nextTick(() => { if (window.lucide) lucide.createIcons(); })" 
+                  class="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition relative"
+                  :class="currentView === 'hunter' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'">
+            <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
+            <span>Lead Hunter</span>
+            <span class="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-cyan-400/20 text-cyan-300 border border-cyan-400/30">
+              NOVO
+            </span>
+          </button>
         </div>
 
         <!-- Desktop Action Buttons -->
@@ -1184,6 +1195,295 @@
       </div>
 
     </div>
+    <!-- VIEW 3: LEAD HUNTER (GOOGLE MAPS, CNPJ, INSTAGRAM) -->
+    <div v-show="currentView === 'hunter'" class="w-full space-y-4 sm:space-y-6">
+
+      <!-- Header Banner -->
+      <div class="glass rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex items-center space-x-3.5">
+          <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 text-cyan-400 flex items-center justify-center shrink-0 shadow-lg">
+            <i data-lucide="crosshair" class="w-5 h-5 sm:w-6 sm:h-6"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h2 class="text-base sm:text-xl font-bold text-white tracking-tight">Lead Hunter — Mineração Autônoma</h2>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                IA WEB SCAN
+              </span>
+            </div>
+            <p class="text-xs text-slate-400 mt-0.5">
+              Capte empresas e contatos reais com telefone e WhatsApp no Google Maps, Cadastros Comerciais e Instagram.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-2 self-start md:self-auto">
+          <span class="text-xs text-slate-400">Pronto para abastecer o Hermes SDR</span>
+        </div>
+      </div>
+
+      <!-- Source Selection Cards (Maps, CNPJ, Instagram) -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <!-- Option 1: Google Maps -->
+        <div @click="hunterSource = 'maps'"
+             :class="hunterSource === 'maps' ? 'border-cyan-500 bg-cyan-950/20 shadow-lg ring-1 ring-cyan-500/50' : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'"
+             class="p-4 rounded-xl border cursor-pointer transition flex items-start space-x-3">
+          <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+            <i data-lucide="map-pin" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-1.5">
+              <span class="text-xs sm:text-sm font-bold text-white">Google Maps</span>
+              <span v-if="hunterSource === 'maps'" class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-0.5">
+              Empresas locais, clínicas, escolas e comércio por cidade ou bairro.
+            </p>
+          </div>
+        </div>
+
+        <!-- Option 2: CNPJ & Listas Comerciais -->
+        <div @click="hunterSource = 'cnpj'"
+             :class="hunterSource === 'cnpj' ? 'border-cyan-500 bg-cyan-950/20 shadow-lg ring-1 ring-cyan-500/50' : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'"
+             class="p-4 rounded-xl border cursor-pointer transition flex items-start space-x-3">
+          <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
+            <i data-lucide="building-2" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-1.5">
+              <span class="text-xs sm:text-sm font-bold text-white">CNPJ & Listas</span>
+              <span v-if="hunterSource === 'cnpj'" class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-0.5">
+              Empresas ativas e contatos comerciais por CNAE, segmento e DDD.
+            </p>
+          </div>
+        </div>
+
+        <!-- Option 3: Instagram -->
+        <div @click="hunterSource = 'instagram'"
+             :class="hunterSource === 'instagram' ? 'border-cyan-500 bg-cyan-950/20 shadow-lg ring-1 ring-cyan-500/50' : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'"
+             class="p-4 rounded-xl border cursor-pointer transition flex items-start space-x-3">
+          <div class="w-8 h-8 rounded-lg bg-pink-500/10 text-pink-400 flex items-center justify-center shrink-0 mt-0.5">
+            <i data-lucide="instagram" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-1.5">
+              <span class="text-xs sm:text-sm font-bold text-white">Instagram</span>
+              <span v-if="hunterSource === 'instagram'" class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-0.5">
+              Perfis comerciais com WhatsApp ou links de contato na bio.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search Controls Bar -->
+      <div class="glass rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-slate-800 space-y-3">
+        <form @submit.prevent="executeHunterSearch" class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+          
+          <!-- Nicho / Segmento -->
+          <div class="md:col-span-5 space-y-1.5">
+            <label class="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-cyan-400"></i>
+              <span>Nicho / Ramo de Atividade:</span>
+            </label>
+            <input type="text" v-model="hunterNiche"
+                   placeholder="Ex.: Escolas de Idiomas, Clínicas Odontológicas, Imobiliárias..."
+                   class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+            <!-- Quick Chips -->
+            <div class="flex items-center space-x-1.5 overflow-x-auto text-[10px] text-slate-400 scrollbar-thin pt-0.5">
+              <span class="shrink-0 text-slate-500">Sugestões:</span>
+              <button type="button" @click="hunterNiche = 'Escolas e Colégios'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Escolas</button>
+              <button type="button" @click="hunterNiche = 'Clínicas Odontológicas'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Odontologia</button>
+              <button type="button" @click="hunterNiche = 'Imobiliárias e Corretores'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Imobiliárias</button>
+              <button type="button" @click="hunterNiche = 'Estética e Beleza'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Estética</button>
+            </div>
+          </div>
+
+          <!-- Cidade / Região -->
+          <div class="md:col-span-4 space-y-1.5">
+            <label class="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1">
+              <i data-lucide="map-pin" class="w-3.5 h-3.5 text-cyan-400"></i>
+              <span>Cidade / Região ou DDD:</span>
+            </label>
+            <input type="text" v-model="hunterLocation"
+                   placeholder="Ex.: Francisco Beltrão, PR ou Pato Branco ou DDD 46"
+                   class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+            <!-- Quick Chips -->
+            <div class="flex items-center space-x-1.5 overflow-x-auto text-[10px] text-slate-400 scrollbar-thin pt-0.5">
+              <span class="shrink-0 text-slate-500">Cidades:</span>
+              <button type="button" @click="hunterLocation = 'Francisco Beltrão, PR'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Beltrão</button>
+              <button type="button" @click="hunterLocation = 'Pato Branco, PR'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Pato Branco</button>
+              <button type="button" @click="hunterLocation = 'Cascavel, PR'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Cascavel</button>
+              <button type="button" @click="hunterLocation = 'Curitiba, PR'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Curitiba</button>
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="md:col-span-3">
+            <button type="submit" :disabled="hunterSearching || !hunterNiche || !hunterLocation"
+                    class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-40 text-slate-950 font-bold text-xs tracking-wide shadow-lg transition flex items-center justify-center space-x-2 active:scale-95">
+              <i data-lucide="sparkles" class="w-4 h-4 fill-slate-950" :class="{'animate-spin': hunterSearching}"></i>
+              <span>{{ hunterSearching ? 'Minerando na Web...' : 'Buscar com IA' }}</span>
+            </button>
+          </div>
+
+        </form>
+      </div>
+
+      <!-- Search Progress / Results -->
+      <div v-if="hunterSearching" class="glass rounded-xl p-12 text-center text-slate-400 space-y-3 border border-slate-800">
+        <div class="relative w-12 h-12 mx-auto">
+          <div class="w-12 h-12 rounded-full border-2 border-cyan-500/20 border-t-cyan-400 animate-spin"></div>
+          <i data-lucide="crosshair" class="w-6 h-6 text-cyan-400 absolute inset-0 m-auto"></i>
+        </div>
+        <h3 class="text-sm font-bold text-slate-200">Varrendo {{ hunterSource.toUpperCase() }} em busca de contatos reais...</h3>
+        <p class="text-xs text-slate-500 max-w-md mx-auto">
+          Localizando empresas em "{{ hunterLocation }}" no nicho "{{ hunterNiche }}", extraindo e validando números de WhatsApp.
+        </p>
+      </div>
+
+      <!-- Results Table -->
+      <div v-else-if="hunterResults.length > 0" class="glass rounded-xl sm:rounded-2xl border border-slate-800 overflow-hidden shadow-2xl space-y-0">
+        
+        <!-- Table Header Toolbar -->
+        <div class="p-4 sm:p-5 border-b border-slate-800 bg-slate-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center space-x-3">
+            <input type="checkbox" @change="toggleSelectAllHunter"
+                   :checked="selectedHunterLeads.length === hunterResults.length && hunterResults.length > 0"
+                   class="w-4 h-4 accent-cyan-500 cursor-pointer rounded">
+            <div>
+              <span class="text-xs sm:text-sm font-bold text-white">
+                {{ hunterResults.length }} Leads Minerados
+              </span>
+              <span class="text-xs text-cyan-400 font-semibold ml-2">
+                ({{ selectedHunterLeads.length }} selecionados)
+              </span>
+            </div>
+          </div>
+
+          <!-- Import Controls -->
+          <div class="flex items-center space-x-2 flex-wrap gap-2">
+            <!-- Target Campaign Selector -->
+            <select v-model="hunterTargetCampaign" class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+              <option value="lotes_hunter_captacao">Campanha: Captação Hunter</option>
+              <option v-for="c in campaigns" :key="c.slug" :value="c.slug">
+                Campanha: {{ c.name }}
+              </option>
+            </select>
+
+            <!-- Import Button -->
+            <button @click="importHunterLeads" :disabled="selectedHunterLeads.length === 0 || hunterImporting"
+                    class="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 text-slate-950 font-bold text-xs shadow-lg transition flex items-center space-x-1.5 active:scale-95">
+              <i data-lucide="download" class="w-3.5 h-3.5 fill-slate-950" :class="{'animate-spin': hunterImporting}"></i>
+              <span>{{ hunterImporting ? 'Importando...' : ('Importar (' + selectedHunterLeads.length + ')') }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Success Toast after Import -->
+        <div v-if="hunterImportSuccess" class="p-4 bg-emerald-950/40 border-b border-emerald-500/30 flex items-center justify-between text-xs text-emerald-300">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+            <span>{{ hunterImportSuccess }}</span>
+          </div>
+          <button @click="currentView = 'dashboard'" class="px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-200 font-bold hover:bg-emerald-500/30">
+            Ver Campanha →
+          </button>
+        </div>
+
+        <!-- Scrollable Table -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-900/80 text-slate-400 text-[11px] uppercase tracking-wider font-semibold border-b border-slate-800">
+              <tr>
+                <th class="p-3.5 w-10 text-center">Sel</th>
+                <th class="p-3.5">Empresa / Contato</th>
+                <th class="p-3.5">Telefone / WhatsApp</th>
+                <th class="p-3.5 hidden md:table-cell">Nicho</th>
+                <th class="p-3.5 hidden sm:table-cell">Cidade / UF</th>
+                <th class="p-3.5 hidden lg:table-cell">Detalhes / Endereço</th>
+                <th class="p-3.5 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/60">
+              <tr v-for="(lead, idx) in hunterResults" :key="idx"
+                  :class="selectedHunterLeads.includes(lead) ? 'bg-slate-800/40' : 'hover:bg-slate-900/40'"
+                  class="transition">
+                <!-- Checkbox -->
+                <td class="p-3.5 text-center">
+                  <input type="checkbox" :value="lead" v-model="selectedHunterLeads"
+                         class="w-4 h-4 accent-cyan-500 cursor-pointer rounded">
+                </td>
+                
+                <!-- Nome -->
+                <td class="p-3.5">
+                  <div class="font-bold text-slate-200">{{ lead.name }}</div>
+                  <div class="text-[10px] text-slate-500 flex items-center space-x-1 mt-0.5">
+                    <span class="px-1.5 py-0.2 rounded bg-slate-800 text-[9px] font-mono uppercase">{{ lead.source }}</span>
+                    <span class="sm:hidden text-slate-400">• {{ lead.city }}</span>
+                  </div>
+                </td>
+
+                <!-- Telefone -->
+                <td class="p-3.5">
+                  <div v-if="lead.phone" class="flex items-center space-x-1.5 font-mono">
+                    <span class="font-bold text-emerald-400">+{{ lead.phone }}</span>
+                    <a :href="'https://wa.me/' + lead.phone" target="_blank"
+                       class="p-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400"
+                       title="Testar conversa no WhatsApp">
+                      <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                    </a>
+                  </div>
+                  <div v-else class="text-slate-500 italic">Telefone não encontrado</div>
+                </td>
+
+                <!-- Nicho -->
+                <td class="p-3.5 hidden md:table-cell text-slate-300">
+                  <span class="px-2 py-0.5 rounded bg-slate-800 text-[11px]">{{ lead.niche }}</span>
+                </td>
+
+                <!-- Cidade -->
+                <td class="p-3.5 hidden sm:table-cell text-slate-300">
+                  {{ lead.city }}
+                </td>
+
+                <!-- Detalhes -->
+                <td class="p-3.5 hidden lg:table-cell text-slate-400 text-[11px] max-w-xs truncate" :title="lead.details">
+                  {{ lead.details || '-' }}
+                </td>
+
+                <!-- Status no Banco -->
+                <td class="p-3.5 text-center">
+                  <span v-if="lead.already_in_db"
+                        class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                    Já na Base
+                  </span>
+                  <span v-else
+                        class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                    🟢 Novo
+                  </span>
+                </td>
+
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+      <!-- Empty State before first search -->
+      <div v-else class="glass rounded-xl p-10 text-center text-slate-500 border border-slate-800 space-y-2">
+        <i data-lucide="radar" class="w-10 h-10 mx-auto text-slate-600 mb-2"></i>
+        <h4 class="text-sm font-bold text-slate-300">Nenhuma busca realizada ainda</h4>
+        <p class="text-xs text-slate-500 max-w-sm mx-auto">
+          Escolha uma fonte (Google Maps, CNPJ ou Instagram), digite o nicho e a cidade acima e clique em <b>Buscar com IA</b>.
+        </p>
+      </div>
+
+    </div>
   </main>
 
   <!-- STICKY MOBILE BOTTOM BAR (Visible only on mobile) -->
@@ -1210,6 +1510,14 @@
       <span>{{ currentView === 'dashboard' ? 'Chat Vivo' : 'Painel' }}</span>
       <span v-if="currentView === 'dashboard' && (stats.total_scheduled || 0) + (stats.total_replies || 0) > 0" 
             class="w-2 h-2 rounded-full bg-purple-500 animate-pulse absolute -top-1 -right-1"></span>
+    </button>
+
+    <!-- Mobile Hunter Button -->
+    <button @click="currentView = 'hunter'; $nextTick(() => { if (window.lucide) lucide.createIcons(); })"
+            class="py-2.5 px-3 rounded-xl bg-slate-800 border border-slate-700 font-bold text-xs flex items-center space-x-1 transition"
+            :class="currentView === 'hunter' ? 'text-cyan-400 border-cyan-500/50' : 'text-slate-300'">
+      <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
+      <span>Hunter</span>
     </button>
 
     <!-- Test Button -->
@@ -1267,6 +1575,15 @@
         sendingHuman: false,
         agentTyping: false,
         eventSource: null,
+        hunterSource: 'maps',
+        hunterNiche: 'Escolas',
+        hunterLocation: 'Francisco Beltrão, PR',
+        hunterSearching: false,
+        hunterResults: [],
+        selectedHunterLeads: [],
+        hunterTargetCampaign: 'lotes_hunter_captacao',
+        hunterImporting: false,
+        hunterImportSuccess: null,
         activeLead: null,
         conversationMessages: [],
         conversationLoading: false,
@@ -1697,6 +2014,81 @@
           return '(' + p.slice(2,4) + ') ' + p.slice(4,8) + '-' + p.slice(8);
         }
         return p;
+      },
+      async executeHunterSearch() {
+        if (!this.hunterNiche || !this.hunterLocation || this.hunterSearching) return;
+        this.hunterSearching = true;
+        this.hunterResults = [];
+        this.selectedHunterLeads = [];
+        this.hunterImportSuccess = null;
+        try {
+          const res = await fetch('/painel/api/hunter/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              source: this.hunterSource,
+              niche: this.hunterNiche,
+              location: this.hunterLocation,
+              limit: 15
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            this.hunterResults = data.leads || [];
+            this.selectedHunterLeads = this.hunterResults.filter(l => l.valid_phone && !l.already_in_db);
+          } else {
+            const err = await res.json();
+            alert('Erro na mineração: ' + (err.detail || 'Falha ao buscar contatos'));
+          }
+        } catch (e) {
+          alert('Erro de conexão: ' + e.message);
+        } finally {
+          this.hunterSearching = false;
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        }
+      },
+      toggleSelectAllHunter() {
+        if (this.selectedHunterLeads.length === this.hunterResults.length) {
+          this.selectedHunterLeads = [];
+        } else {
+          this.selectedHunterLeads = [...this.hunterResults];
+        }
+      },
+      async importHunterLeads() {
+        if (this.selectedHunterLeads.length === 0 || this.hunterImporting) return;
+        this.hunterImporting = true;
+        this.hunterImportSuccess = null;
+        try {
+          const res = await fetch('/painel/api/hunter/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              campaign_slug: this.hunterTargetCampaign,
+              leads: this.selectedHunterLeads
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            this.hunterImportSuccess = `Sucesso! ${data.imported} novos leads importados para a campanha (${data.duplicates} duplicados ignorados).`;
+            await this.fetchStats();
+            await this.fetchCampaigns();
+            await this.fetchLeads();
+            this.hunterResults.forEach(l => {
+              if (this.selectedHunterLeads.includes(l)) {
+                l.already_in_db = true;
+              }
+            });
+            this.selectedHunterLeads = [];
+          } else {
+            const err = await res.json();
+            alert('Erro ao importar: ' + (err.detail || 'Falha ao salvar leads'));
+          }
+        } catch (e) {
+          alert('Erro de conexão: ' + e.message);
+        } finally {
+          this.hunterImporting = false;
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        }
       },
       initLiveStream() {
         if (this.eventSource) return;

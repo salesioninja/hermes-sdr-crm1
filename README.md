@@ -42,6 +42,15 @@ O **Hermes SDR** não é um chatbot tradicional baseado em árvores de decisão 
 - **Envio Direto pelo Painel:** O operador digita no painel web/mobile e a mensagem sai instantaneamente pelo WhatsApp conectado, ficando catalogada como `👤 Salesio Ninja (Humano)`.
 - **Devolução para a IA com 1 Clique:** Finalizada a intervenção, basta clicar em *"Devolver ao Hermes"* para reativar as respostas autônomas do agente.
 
+### 8. 🎯 Lead Hunter — Mineração Autônoma Multicanal (Google Maps, CNPJ, Instagram)
+- **Varredura Inteligente com IA:** Busca contatos comerciais reais na web a partir de comandos simples de Nicho + Cidade/Região (ex.: *"Clínicas em Francisco Beltrão"*, *"Escolas em Pato Branco"*).
+- **Três Canais Integrados:**
+  1. **Google Maps:** Empresas locais, estabelecimentos de saúde, educação, gastronomia e varejo.
+  2. **CNPJ & Cadastros Comerciais:** Empresas ativas por CNAE, segmento e DDD.
+  3. **Instagram:** Perfis comerciais com número de WhatsApp ou link de contato público na bio.
+- **Higienização Instantânea:** Padroniza telefones com DDI (+55), valida se é celular ou fixo e verifica se o número já existe no banco de dados.
+- **Importação com 1 Clique:** Transfere os leads minerados diretamente para qualquer campanha do Hermes SDR com status `PENDING`, prontos para a fila de abordagem com anti-ban.
+
 ### 7. 📊 Painel de Controle e Métricas de CRM (Desktop & Mobile)
 - **Funil de Vendas Visual:** Contadores de Base de Leads, Contatos Realizados, Respostas Obtidas e Agendamentos Concluídos.
 - **Segmentação por Campanhas:** Suporte a múltiplos nichos (Educação BNCC Paraná, Negócios/PLR, Tecnologia, Turismo, Regional PR/SC, etc.).

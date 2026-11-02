@@ -1364,6 +1364,167 @@ async def toggle_takeover(req: TakeoverRequest):
     return {"success": True, "human_takeover": val}
 
 # -------------------------------------------------------------
+# Lead Hunter Endpoints (Google Maps, CNPJ, Instagram)
+# -------------------------------------------------------------
+class HunterSearchRequest(BaseModel):
+    source: str = 'maps'  # 'maps', 'cnpj', 'instagram'
+    niche: str
+    location: str
+    limit: int = 15
+
+class HunterImportRequest(BaseModel):
+    campaign_slug: str
+    campaign_name: Optional[str] = None
+    leads: List[dict]
+
+@app.post('/painel/api/hunter/search')
+async def hunter_search(req: HunterSearchRequest):
+    '''Searches for real leads across Google Maps, CNPJ/telelistas or Instagram Bio using live AI web enrichment.'''
+    niche = req.niche.strip()
+    location = req.location.strip()
+    if not niche or not location:
+        raise HTTPException(status_code=400, detail='Nicho e Localização são obrigatórios')
+
+    api_key = os.environ.get('OPENROUTER_API_KEY', '')
+    if not api_key:
+        raise HTTPException(status_code=500, detail='OPENROUTER_API_KEY não configurada no servidor')
+
+    source_instructions = {
+        'maps': f"Encontre empresas locais e estabelecimentos comerciais reais do segmento '{niche}' na cidade/região '{location}' presentes no Google Maps com seus números de telefone comercial ou WhatsApp reais.",
+        'cnpj': f"Encontre empresas abertas, dados comerciais e telefones cadastrados do segmento '{niche}' na região '{location}'.",
+        'instagram': f"Encontre perfis comerciais no Instagram e negócios de '{niche}' em '{location}' que tenham telefone ou WhatsApp de contato público divulgado na bio ou em links."
+    }
+    instruction = source_instructions.get(req.source, source_instructions['maps'])
+
+    prompt = (
+        f"{instruction}\n"
+        f"Encontre até {req.limit} contatos comerciais reais.\n"
+        "Retorne EXCLUSIVAMENTE um array JSON puro (sem markdown, sem explicações):\n"
+        "[\n"
+        "  {\n"
+        "    \"name\": \"Nome da Empresa ou Perfil\",\n"
+        "    \"phone\": \"5546999999999\",\n"
+        f"    \"city\": \"{location}\",\n"
+        f"    \"niche\": \"{niche}\",\n"
+        f"    \"source\": \"{req.source.upper()}\",\n"
+        "    \"details\": \"Endereço, @perfil ou observação\"\n"
+        "  }\n"
+        "]"
+    )
+
+    found_leads = []
+    try:
+        async with httpx.AsyncClient(timeout=40.0) as client:
+            res = await client.post(
+                'https://openrouter.ai/api/v1/chat/completions',
+                headers={
+                    'Authorization': f'Bearer {api_key}',
+                    'Content-Type': 'application/json'
+                },
+                json={
+                    'model': 'perplexity/sonar',
+                    'messages': [
+                        {'role': 'system', 'content': 'Você é um robô minerador de leads comerciais especialista no Brasil. Seu objetivo é extrair dados reais e telefones para WhatsApp. Responda APENAS o JSON puro com os leads encontrados.'},
+                        {'role': 'user', 'content': prompt}
+                    ],
+                    'temperature': 0.2
+                }
+            )
+            if res.status_code == 200:
+                data = res.json()
+                raw_text = data['choices'][0]['message']['content'].strip()
+                if raw_text.startswith('```'):
+                    raw_text = re.sub(r'^```[a-z]*\n?', '', raw_text)
+                    raw_text = re.sub(r'```$', '', raw_text).strip()
+                parsed = json.loads(raw_text)
+                if isinstance(parsed, list):
+                    found_leads = parsed
+            else:
+                print(f'[Lead Hunter] Erro API: {res.text}')
+    except Exception as e:
+        print(f'[Lead Hunter] Erro na busca: {e}')
+
+    # Clean and validate numbers, check if exists in DB
+    cleaned_leads = []
+    init_db()
+    with get_db() as conn:
+        for item in found_leads:
+            name = item.get('name', '').strip()
+            raw_phone = item.get('phone', '')
+            digits = re.sub(r'\D', '', raw_phone)
+            if (len(digits) == 10 or len(digits) == 11) and not digits.startswith('55'):
+                digits = '55' + digits
+
+            exists = False
+            if digits:
+                row = conn.execute('SELECT id FROM leads WHERE phone = ? LIMIT 1', (digits,)).fetchone()
+                if row:
+                    exists = True
+
+            cleaned_leads.append({
+                'name': name,
+                'phone': digits,
+                'city': item.get('city') or location,
+                'state': item.get('state', 'PR'),
+                'niche': item.get('niche') or niche,
+                'source': item.get('source') or req.source.upper(),
+                'details': item.get('details', ''),
+                'already_in_db': exists,
+                'valid_phone': len(digits) in (12, 13)
+            })
+
+    return {
+        'leads': cleaned_leads,
+        'total': len(cleaned_leads),
+        'source': req.source,
+        'query': f'{niche} em {location}'
+    }
+
+@app.post('/painel/api/hunter/import')
+async def hunter_import(req: HunterImportRequest):
+    '''Imports selected hunter leads into a specified SDR campaign.'''
+    slug = req.campaign_slug.strip() if req.campaign_slug else 'lotes_hunter_captacao'
+    leads = req.leads
+    if not leads:
+        raise HTTPException(status_code=400, detail='Nenhum lead selecionado para importar')
+
+    now_iso = datetime.now().isoformat()
+    init_db()
+    imported = 0
+    duplicates = 0
+
+    with get_db() as conn:
+        camp = conn.execute('SELECT id FROM campaigns WHERE slug = ?', (slug,)).fetchone()
+        if not camp:
+            name = req.campaign_name or f'Captação Hunter: {slug.replace("_", " ").title()}'
+            conn.execute('''
+            INSERT OR IGNORE INTO campaigns 
+            (slug, name, category, source_folder, message_template, created_at)
+            VALUES (?, ?, 'Lead Hunter', 'hunter', ?, ?)
+            ''', (slug, name, '{Olá|Oi}{nome}, tudo bem? Aqui é o Salesio. Vi seu contato na nossa rede de negócios.', now_iso))
+
+        for item in leads:
+            phone = re.sub(r'\D', '', item.get('phone', ''))
+            if not phone:
+                continue
+            name = item.get('name', '').strip()
+            city = item.get('city', '').strip()
+            niche = item.get('niche', '').strip()
+
+            try:
+                conn.execute('''
+                INSERT INTO leads (campaign_slug, phone, name, city, niche, status, created_at)
+                VALUES (?, ?, ?, ?, ?, 'PENDING', ?)
+                ''', (slug, phone, name, city, niche, now_iso))
+                imported += 1
+            except sqlite3.IntegrityError:
+                duplicates += 1
+
+        conn.commit()
+
+    return {'success': True, 'imported': imported, 'duplicates': duplicates}
+
+# -------------------------------------------------------------
 # Frontend Dashboard HTML
 # -------------------------------------------------------------
 HTML_DASHBOARD_PATH = os.path.join(DATA_DIR, "sdr_ui", "index.html")

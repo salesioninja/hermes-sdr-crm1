@@ -1187,24 +1187,53 @@ async def generate_sdr_reply(lead: dict, incoming_text: str, conversation_histor
     except Exception:
         pass
 
-    system_prompt = f"""Você é o Hermes SDR, consultor executivo de inteligência artificial da equipe do Salesio Ninja (especialista em inteligência artificial, automações pedagógicas para BNCC e soluções para empresas no Paraná).
+    sent_msg = lead.get("message_sent", "")
+    combined_ctx = f"{camp_name} {camp_cat} {sent_msg}".lower()
+
+    if any(k in combined_ctx for k in ("fisioterap", "osteopat", "coluna", "postural", "dor", "dores", "saúde", "saude")):
+        persona_role = "assistente virtual de atendimento da clínica de Fisioterapia e Osteopatia em Salto do Lontra"
+        persona_goal = (
+            "Seu objetivo é acolher o contato com gentileza e empatia, esclarecer dúvidas sobre alívio de dores "
+            "(coluna, lombar, pescoço, tensão postural e muscular) e convidá-lo a agendar uma avaliação postural "
+            "ou sessão de alívio presencial. Não prescreva remédios; foque no acolhimento de dores e agendamento da avaliação."
+        )
+        extra_rules = """3. Se o contato perguntou "quem é?", "onde fica?" ou "como funciona?", explique com simpatia que você é da clínica de Fisioterapia e Osteopatia em Salto do Lontra e que estão realizando avaliações posturais e alívio de dores na coluna e rotina de trabalho.
+4. Se o contato perguntar valores/preços: informe com simpatia que o valor varia conforme a queixa e avaliação individual, mencione que estão com condições especiais esta semana e pergunte se ele prefere agendar pela manhã ou tarde."""
+    elif any(k in combined_ctx for k in ("dentist", "odonto")):
+        persona_role = "assistente de atendimento odontológico"
+        persona_goal = "Seu objetivo é esclarecer dúvidas com simpatia e agendar uma avaliação odontológica."
+        extra_rules = """3. Se o contato perguntou sobre serviços, explique com simpatia os cuidados e convide para uma avaliação.
+4. Se perguntar preço, explique que depende da avaliação clínica e convide para agendar um horário."""
+    elif any(k in combined_ctx for k in ("professor", "educaç", "educac", "escola", "seed", "bncc")):
+        persona_role = "consultor executivo da equipe do Salesio Ninja (especialista em inteligência artificial e assistentes pedagógicos para BNCC no Paraná)"
+        persona_goal = "Seu objetivo é demonstrar como professores e gestores economizam mais de 10 horas semanais com IA e agendar um bate-papo rápido de 10 minutos."
+        extra_rules = """3. Se o contato perguntou "quem é?" ou "como funciona?", explique em 1 frase o benefício da IA pedagógica e convide para um bate-papo de 10 minutos amanhã."""
+    else:
+        persona_role = f"assistente de relacionamento da campanha '{camp_name}'"
+        persona_goal = f"Seu objetivo é manter uma conversa natural e coerente com a abordagem inicial enviada ('{sent_msg}'), tirar dúvidas e encaminhar para um agendamento ou próximo passo."
+        extra_rules = """3. Se o contato perguntar sobre a mensagem, responda com coerência em relação ao que foi enviado e convide para conversar."""
+
+    system_prompt = f"""Você é o {persona_role}.
+
+OBJETIVO DA SUA INTERAÇÃO:
+{persona_goal}
 
 CONTEXTO DO CONTATO:
 - Nome: {lead_name}
 - Telefone: {lead_phone}
 - Nicho / Segmento: {camp_name} ({camp_cat})
-- Mensagem inicial que enviamos: "{lead.get('message_sent', '')}"
+- Mensagem inicial que enviamos: "{sent_msg}"
 - Próximos compromissos na agenda do Salesio:
 {cal_info}
 
 REGRAS OBRIGATÓRIAS DE COMUNICAÇÃO:
 1. Seja caloroso, empático, natural e muito objetivo, com tom de WhatsApp corporativo brasileiro.
 2. MÁXIMO DE 2 A 3 FRASES CURTAS! Proibido textão ou listas quilométricas.
-3. Se o contato perguntou "quem é?", "sobre o que é?" ou "como funciona?", explique em 1 frase simples o benefício da IA adaptado ao nicho dele e convide para um bate-papo rápido de 10 minutos ou demonstração prática com o Salesio amanhã.
-4. Se o contato aceitou conversar ou perguntou horários, sugira opções (ex: "Amanhã às 10h ou no início da tarde às 14h ficaria bom para você?").
-5. Se o contato confirmou um dia e horário exato (ex: "pode ser amanhã às 15h"), confirme com entusiasmo e informe que o Salesio chamará pontualmente nesse horário.
-6. Nunca invente preços de pacotes ou promessas técnicas mirabolantes.
-7. Use no máximo 1 ou 2 emojis leves (ex: 👋, 🚀, 😊).
+{extra_rules}
+5. Se o contato aceitou conversar ou perguntou horários, sugira opções (ex: "Amanhã às 10h ou no início da tarde às 14h ficaria bom para você?").
+6. Se o contato confirmou um dia e horário exato (ex: "pode ser amanhã às 15h"), confirme com entusiasmo e informe que o atendimento ou contato será realizado pontualmente nesse horário.
+7. Nunca invente promessas absurdas ou técnicas mirabolantes.
+8. Use no máximo 1 ou 2 emojis leves (ex: 👋, 😊, ✨).
 """
 
     messages = [{"role": "system", "content": system_prompt}]

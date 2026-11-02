@@ -11,6 +11,8 @@ import random
 import glob
 import re
 import sqlite3
+import csv
+import io
 import asyncio
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any
@@ -36,6 +38,8 @@ if not os.path.exists(DATA_DIR):
 
 DOWNLOADS_DIR = os.path.join(DATA_DIR, "downloads")
 DB_PATH = os.path.join(DATA_DIR, "campaigns.db")
+SCRAPER_NINJA_URL = os.environ.get("SCRAPER_NINJA_URL", "https://leads.acessaronline.com.br").rstrip("/")
+
 
 # Load .env if present in DATA_DIR or current directory
 for env_candidate in [os.path.join(DATA_DIR, ".env"), os.path.join(os.getcwd(), ".env")]:
@@ -1367,7 +1371,7 @@ async def toggle_takeover(req: TakeoverRequest):
 # Lead Hunter Endpoints (Google Maps, CNPJ, Instagram)
 # -------------------------------------------------------------
 class HunterSearchRequest(BaseModel):
-    source: str = 'maps'  # 'maps', 'cnpj', 'instagram'
+    source: str = 'maps'  # 'maps', 'cnpj', 'instagram', 'ninja'
     niche: str
     location: str
     limit: int = 15
@@ -1377,25 +1381,197 @@ class HunterImportRequest(BaseModel):
     campaign_name: Optional[str] = None
     leads: List[dict]
 
+def parse_ninja_csv_leads(csv_text: str, default_city: str = "", default_niche: str = "") -> List[dict]:
+    cleaned_leads = []
+    init_db()
+    with get_db() as conn:
+        reader = csv.DictReader(io.StringIO(csv_text))
+        for row in reader:
+            title = (row.get('title') or '').strip()
+            if not title:
+                continue
+            raw_phone = (row.get('phone') or '').strip()
+            digits = re.sub(r'\D', '', raw_phone)
+            if (len(digits) == 10 or len(digits) == 11) and not digits.startswith('55'):
+                digits = '55' + digits
+
+            address = (row.get('complete_address') or row.get('address') or '').strip()
+            website = (row.get('website') or '').strip()
+            rating = (row.get('review_rating') or '').strip()
+            review_count = (row.get('review_count') or '').strip()
+            category = (row.get('category') or default_niche or 'Comércio Local').strip()
+
+            city = default_city
+            if not city and address:
+                parts = address.split(' - ')
+                if len(parts) >= 2:
+                    city = parts[-2].strip()
+
+            details_parts = []
+            if address:
+                details_parts.append(address)
+            if website:
+                details_parts.append(f"Site: {website}")
+            if rating:
+                details_parts.append(f"Nota: {rating} ({review_count} avaliações)")
+            details = " | ".join(details_parts)
+
+            exists = False
+            if digits:
+                row_db = conn.execute('SELECT id FROM leads WHERE phone = ? LIMIT 1', (digits,)).fetchone()
+                if row_db:
+                    exists = True
+
+            cleaned_leads.append({
+                'name': title,
+                'phone': digits,
+                'raw_phone': raw_phone,
+                'city': city or default_city or 'Local',
+                'state': 'PR',
+                'niche': category,
+                'source': 'GOOGLE MAPS (NINJA)',
+                'details': details,
+                'website': website,
+                'rating': rating,
+                'review_count': review_count,
+                'address': address,
+                'already_in_db': exists,
+                'valid_phone': len(digits) in (12, 13)
+            })
+    return cleaned_leads
+
+@app.get('/painel/api/hunter/ninja/jobs')
+async def hunter_ninja_jobs():
+    '''Fetches list of historical scraping jobs from Scraper Ninja.'''
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+            res = await client.get(f"{SCRAPER_NINJA_URL}/api/v1/jobs")
+            if res.status_code == 200:
+                jobs = res.json()
+                if isinstance(jobs, list):
+                    jobs.sort(key=lambda x: x.get('Date', ''), reverse=True)
+                return {'jobs': jobs}
+    except Exception as e:
+        print(f"[Lead Hunter] Erro ao listar jobs ninja: {e}")
+    return {'jobs': []}
+
+@app.get('/painel/api/hunter/ninja/job/{job_id}/leads')
+async def hunter_ninja_job_leads(job_id: str):
+    '''Downloads and parses leads from an existing Scraper Ninja job.'''
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=15.0) as client:
+            info_res = await client.get(f"{SCRAPER_NINJA_URL}/api/v1/jobs/{job_id}")
+            job_name = ""
+            if info_res.status_code == 200:
+                job_name = info_res.json().get('Name', '')
+
+            csv_res = await client.get(f"{SCRAPER_NINJA_URL}/api/v1/jobs/{job_id}/download?format=csv")
+            if csv_res.status_code != 200:
+                raise HTTPException(status_code=404, detail="Resultados do job não disponíveis ou não encontrados")
+
+            leads = parse_ninja_csv_leads(csv_res.text)
+            return {
+                'leads': leads,
+                'total': len(leads),
+                'job_id': job_id,
+                'job_name': job_name,
+                'source': 'GOOGLE MAPS (NINJA)'
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao carregar leads do job: {e}")
+
 @app.post('/painel/api/hunter/search')
 async def hunter_search(req: HunterSearchRequest):
-    '''Searches for real leads across Google Maps, CNPJ/telelistas or Instagram Bio using live AI web enrichment.'''
+    '''Searches for real leads across Google Maps (via native Scraper Ninja) or CNPJ / Instagram (via AI web search).'''
     niche = req.niche.strip()
     location = req.location.strip()
     if not niche or not location:
         raise HTTPException(status_code=400, detail='Nicho e Localização são obrigatórios')
 
+    # 1. GOOGLE MAPS via Native Scraper Ninja
+    if req.source in ('maps', 'ninja'):
+        job_name = f"Hermes — {niche} ({location})"
+        keyword = f"{niche} em {location}"
+        payload = {
+            'name': job_name,
+            'keywords': [keyword],
+            'lang': 'pt',
+            'depth': min(max(req.limit, 10), 40),
+            'fast_mode': False,
+            'email': False,
+            'max_time': 180
+        }
+
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+                create_res = await client.post(
+                    f"{SCRAPER_NINJA_URL}/api/v1/jobs",
+                    json=payload,
+                    headers={'Content-Type': 'application/json'}
+                )
+                if create_res.status_code not in (200, 201):
+                    raise HTTPException(status_code=500, detail=f"Erro ao iniciar busca no Scraper Ninja: {create_res.text}")
+
+                job_id = create_res.json().get('id')
+                if not job_id:
+                    raise HTTPException(status_code=500, detail="ID de job inválido retornado pelo Scraper Ninja")
+
+                # Poll for completion (up to ~45 seconds)
+                completed = False
+                for _ in range(20):
+                    await asyncio.sleep(2.5)
+                    status_res = await client.get(f"{SCRAPER_NINJA_URL}/api/v1/jobs/{job_id}")
+                    if status_res.status_code == 200:
+                        st = status_res.json().get('Status')
+                        if st == 'ok':
+                            completed = True
+                            break
+                        elif st in ('failed', 'error'):
+                            raise HTTPException(status_code=500, detail="Scraper Ninja reportou falha na extração")
+
+                if not completed:
+                    return {
+                        'leads': [],
+                        'total': 0,
+                        'source': 'GOOGLE MAPS (NINJA)',
+                        'query': keyword,
+                        'job_id': job_id,
+                        'status': 'working',
+                        'message': f"O robô Scraper Ninja está minerando em background (Job ID: {job_id}). Você pode carregar o resultado na aba 'Jobs Anteriores' em instantes."
+                    }
+
+                # Download and parse CSV
+                csv_res = await client.get(f"{SCRAPER_NINJA_URL}/api/v1/jobs/{job_id}/download?format=csv")
+                if csv_res.status_code != 200:
+                    raise HTTPException(status_code=500, detail="Erro ao baixar resultados do Scraper Ninja")
+
+                cleaned_leads = parse_ninja_csv_leads(csv_res.text, default_city=location, default_niche=niche)
+                return {
+                    'leads': cleaned_leads,
+                    'total': len(cleaned_leads),
+                    'source': 'GOOGLE MAPS (NINJA)',
+                    'query': keyword,
+                    'job_id': job_id,
+                    'status': 'ok'
+                }
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"[Lead Hunter - Ninja] Erro: {e}")
+            raise HTTPException(status_code=500, detail=f"Falha de comunicação com o Scraper Ninja: {e}")
+
+    # 2. AI WEB SCAN FOR CNPJ & INSTAGRAM
     api_key = os.environ.get('OPENROUTER_API_KEY', '')
     if not api_key:
         raise HTTPException(status_code=500, detail='OPENROUTER_API_KEY não configurada no servidor')
 
     source_instructions = {
-        'maps': f"Encontre empresas locais e estabelecimentos comerciais reais do segmento '{niche}' na cidade/região '{location}' presentes no Google Maps com seus números de telefone comercial ou WhatsApp reais.",
         'cnpj': f"Encontre empresas abertas, dados comerciais e telefones cadastrados do segmento '{niche}' na região '{location}'.",
         'instagram': f"Encontre perfis comerciais no Instagram e negócios de '{niche}' em '{location}' que tenham telefone ou WhatsApp de contato público divulgado na bio ou em links."
     }
-    instruction = source_instructions.get(req.source, source_instructions['maps'])
-
+    instruction = source_instructions.get(req.source, source_instructions['cnpj'])
     prompt = (
         f"{instruction}\n"
         f"Encontre até {req.limit} contatos comerciais reais.\n"
@@ -1442,9 +1618,8 @@ async def hunter_search(req: HunterSearchRequest):
             else:
                 print(f'[Lead Hunter] Erro API: {res.text}')
     except Exception as e:
-        print(f'[Lead Hunter] Erro na busca: {e}')
+        print(f'[Lead Hunter] Erro na busca IA: {e}')
 
-    # Clean and validate numbers, check if exists in DB
     cleaned_leads = []
     init_db()
     with get_db() as conn:

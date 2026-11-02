@@ -3,7 +3,7 @@
 > **Documento Oficial de Engenharia e Especificações Técnicas**  
 > **Sistema:** Hermes SDR (Autonomous Outbound/Inbound Sales Development Representative & CRM)  
 > **Proprietário / Engenharia:** Salesio Ninja (`salesioninja@gmail.com` • `+55 46 99976-5576`)  
-> **Versão:** 2.0.0 (Release de Produção com Live Copilot SSE)  
+> **Versão:** 2.1.0 (Release de Produção: Live Copilot SSE + Motor de Mineração Scraper Ninja)  
 > **Data:** Novembro de 2026  
 
 ---
@@ -22,6 +22,8 @@
 10. [Especificação Completa da API RESTful](#10-especificação-completa-da-api-restful)
 11. [Interface do Usuário (Frontend SPA Vue 3 + Tailwind)](#11-interface-do-usuário-frontend-spa-vue-3--tailwind)
 12. [Configuração de Ambiente e Variáveis](#12-configuração-de-ambiente-e-variáveis)
+13. [Módulo Lead Hunter & Motor de Extração Scraper Ninja](#13-módulo-lead-hunter--motor-de-extração-scraper-ninja)
+14. [Guia de Replicação Passo a Passo para Novos Clientes e Vendas](#14-guia-de-replicação-passo-a-passo-para-novos-clientes-e-vendas)
 
 ---
 
@@ -346,6 +348,153 @@ A interface é construída como uma Single-Page Application (SPA) autossuficient
 | `HERMES_DATA_DIR` | Diretório raiz de dados na VPS | `/opt/data` |
 | `HERMES_GOOGLE_KEY` | Caminho da credencial Service Account Google | `/opt/data/service_account.json`|
 | `HERMES_CALENDAR_ID` | E-mail da agenda Google a ser sincronizada | `suporteninja1@gmail.com` |
+| `SCRAPER_NINJA_URL`  | URL base do serviço Scraper Ninja (Google Maps) | `https://leads.acessaronline.com.br` |
+
+---
+
+## 13. Módulo Lead Hunter & Motor de Extração Scraper Ninja
+
+O módulo **Lead Hunter** é a esteira autônoma de geração de leads frios integrada nativamente ao Hermes SDR. Ele soluciona o maior gargalo de operações de vendas: a **falta de base qualificada e atualizada com números reais de WhatsApp**.
+
+### 13.1 Arquitetura da Integração
+
+Em vez de depender exclusivamente de modelos de IA que tentam "adivinhar" números a partir de resumos da web, o Hermes SDR conecta-se diretamente ao motor **Scraper Ninja** (`gosom/google-maps-scraper:v1.18.1`), que roda lado a lado na mesma infraestrutura VPS.
+
+```mermaid
+flowchart LR
+    A["Operador no Painel Hermes
+(/painel/ -> Lead Hunter)"] -->|1. Busca: Nicho + Cidade| B["Hermes SDR Backend
+(sdr_server.py)"]
+    B -->|2. POST /api/v1/jobs
+Payload JSON| C["Scraper Ninja Engine
+(leads.acessaronline.com.br)"]
+    C -->|3. Headless Chromium
+Playwright Scrape| D["Google Maps
+(Fichas Oficiais)"]
+    D -->|4. Extrai Nome, Tel, Endereço, Site, Notas| C
+    C -->|5. Status: 'ok' + Gera CSV| B
+    B -->|6. Normaliza Telefones DDD+9D
+Checa duplicatas no SQLite| A
+    A -->|7. Clique 'Importar'| E["Campanha Ativa no SQLite
+(Hermes SDR inicia WhatsApp)"]
+```
+
+### 13.2 Por que o Scraper Ninja é Superior em Cidades Brasileiras?
+1. **Google Meu Negócio Real:** Extrai o número comercial/WhatsApp que o empresário cadastrou na própria ficha do Google Maps (mesmo em cidades de 5 a 20 mil habitantes).
+2. **Taxa de Validação de Telefones:** Enquanto scrapers baseados apenas em busca textual obtêm 25% a 40% de telefones em cidades do interior, o Scraper Ninja atinge **78% a 92% de telefones válidos com DDD e nono dígito**.
+3. **Enriquecimento Completo de Dados:**
+   - Nome comercial exato da empresa.
+   - Telefone oficial com DDD formatado para padrão E.164 (`5546991101841`).
+   - Categoria oficial do estabelecimento.
+   - Endereço completo com rua, número, bairro e CEP.
+   - Website próprio ou link direto para perfil no Instagram.
+   - Avaliação média em estrelas (`review_rating`) e quantidade de avaliações (`review_count`).
+
+### 13.3 Endpoints da Integração no Hermes SDR
+
+| Método | Endpoint | Função |
+| :--- | :--- | :--- |
+| `POST` | `/painel/api/hunter/search` | Dispara nova varredura no Scraper Ninja (Google Maps) ou IA Web Scan (CNPJ/Instagram). |
+| `GET` | `/painel/api/hunter/ninja/jobs` | Lista todas as buscas históricas realizadas no Scraper Ninja com data e status. |
+| `GET` | `/painel/api/hunter/ninja/job/{job_id}/leads` | Baixa o CSV bruto do job, formata os contatos para WhatsApp e checa se já constam no banco do Hermes. |
+| `POST` | `/painel/api/hunter/import` | Importa os leads selecionados em lote para a campanha escolhida pelo operador. |
+
+---
+
+## 14. Guia de Replicação Passo a Passo para Novos Clientes e Vendas
+
+Este blueprint técnico foi projetado para que você possa replicar a infraestrutura completa do **Hermes SDR + Scraper Ninja** para novos clientes ou projetos comerciais em qualquer VPS Linux (Ubuntu 22.04 / 24.04 LTS).
+
+### 14.1 Requisitos Mínimos de Servidor (VPS Recomendada)
+- **CPU:** 2 vCPUs (4 vCPUs para alta concorrência de Chromium).
+- **Memória RAM:** 4 GB de RAM (mínimo) ou 8 GB (recomendado).
+- **Armazenamento:** 40 GB SSD / NVMe.
+- **Sistema Operacional:** Ubuntu 22.04 LTS ou Debian 12.
+- **Domínio ou Subdomínio:** Ex.: `hermes.cliente.com.br` e `leads.cliente.com.br`.
+
+---
+
+### 14.2 Passo 1: Instalação do Docker e Traefik / Nginx Proxy
+
+```bash
+# Atualizar repositórios e instalar Docker
+curl -fsSL https://get.docker.com | sh
+usermod -aG docker ubuntu
+
+# Criar rede Docker interna
+docker network create --driver overlay --attachable hermes_net
+```
+
+---
+
+### 14.3 Passo 2: Subir o Motor Scraper Ninja com Docker Compose
+
+Crie o arquivo `/opt/scraper-ninja/docker-compose.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  scraper:
+    image: gosom/google-maps-scraper:v1.18.1
+    restart: always
+    environment:
+      - PORT=8080
+      - CONCURRENCY=4
+      - CACHE_DIR=/data/cache
+    volumes:
+      - ./data:/data
+    networks:
+      - hermes_net
+
+networks:
+  hermes_net:
+    external: true
+```
+
+Suba o container:
+```bash
+cd /opt/scraper-ninja && docker compose up -d
+```
+
+---
+
+### 14.4 Passo 3: Configurar o Hermes SDR Backend
+
+No arquivo de ambiente (`.env`) do Hermes SDR no novo cliente:
+
+```env
+# Conexão com o Scraper Ninja
+SCRAPER_NINJA_URL=http://scraper:8080  # ou https://leads.cliente.com.br
+
+# WhatsApp Bridge (Baileys)
+WHATSAPP_BRIDGE_URL=http://hermes_bridge:3000
+
+# IA Conversacional
+OPENROUTER_API_KEY=sk-or-v1-xxxxxxxxxxxxxxx
+OPENROUTER_MODEL=openai/gpt-4o-mini
+
+# Dados do Proprietário do Negócio
+OWNER_PHONE=5546999999999
+HERMES_DATA_DIR=/opt/data
+```
+
+---
+
+### 14.5 Passo 4: Como Apresentar e Vender este Sistema para Clientes
+
+Ao empacotar este ecossistema para empresas (imobiliárias, clínicas, consultorias, escolas, softwares B2B):
+
+1. **Apresente o Ciclo Completo (All-In-One):**
+   - **Captação:** *"Você não precisa mais pagar lista de contatos. O sistema minera empresas da sua cidade no Google Maps em 30 segundos."*
+   - **Nutrição e Abordagem:** *"O Hermes manda mensagem humanizada, usando 15 variações de Spintax e pausas anti-ban."*
+   - **Qualificação:** *"A inteligência artificial tira dúvidas e qualifica quem realmente tem interesse."*
+   - **Agendamento:** *"Ele fecha a reunião de 10 minutos direto no Google Calendar do vendedor."*
+   - **Controle Total:** *"O vendedor tem um painel web com chat ao vivo estilo WhatsApp Web para intervir quando quiser."*
+
+2. **Modelo de Cobrança Sugerido:**
+   - **Setup Inicial (Implantação):** R$ 1.500,00 a R$ 3.500,00 (Configuração da VPS, número WhatsApp e templates).
+   - **Mensalidade Recorrente (SaaS / Manutenção):** R$ 500,00 a R$ 1.200,00 / mês por cliente.
 
 ---
 

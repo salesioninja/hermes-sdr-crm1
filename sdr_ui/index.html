@@ -1201,50 +1201,80 @@
       <!-- Header Banner -->
       <div class="glass rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div class="flex items-center space-x-3.5">
-          <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 text-cyan-400 flex items-center justify-center shrink-0 shadow-lg">
+          <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 border border-cyan-500/30 text-cyan-400 flex items-center justify-center shrink-0 shadow-lg">
             <i data-lucide="crosshair" class="w-5 h-5 sm:w-6 sm:h-6"></i>
           </div>
           <div>
             <div class="flex items-center space-x-2">
               <h2 class="text-base sm:text-xl font-bold text-white tracking-tight">Lead Hunter — Mineração Autônoma</h2>
-              <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
-                IA WEB SCAN
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center space-x-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>MOTOR NINJA (MAPS) & IA</span>
               </span>
             </div>
             <p class="text-xs text-slate-400 mt-0.5">
-              Capte empresas e contatos reais com telefone e WhatsApp no Google Maps, Cadastros Comerciais e Instagram.
+              Conectado ao motor oficial do Google Maps (Scraper Ninja) e Web Scan para captar telefones reais de empresas.
             </p>
           </div>
         </div>
 
         <div class="flex items-center space-x-2 self-start md:self-auto">
-          <span class="text-xs text-slate-400">Pronto para abastecer o Hermes SDR</span>
+          <a href="https://leads.acessaronline.com.br/" target="_blank"
+             class="px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-[11px] text-slate-300 flex items-center space-x-1.5 transition">
+            <i data-lucide="external-link" class="w-3.5 h-3.5 text-cyan-400"></i>
+            <span>Painel Scraper Ninja</span>
+          </a>
         </div>
       </div>
 
-      <!-- Source Selection Cards (Maps, CNPJ, Instagram) -->
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <!-- Option 1: Google Maps -->
+      <!-- Source Selection Cards (Maps Ninja, Histórico Ninja, CNPJ, Instagram) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        
+        <!-- Option 1: Google Maps (Motor Scraper Ninja) -->
         <div @click="hunterSource = 'maps'"
-             :class="hunterSource === 'maps' ? 'border-cyan-500 bg-cyan-950/20 shadow-lg ring-1 ring-cyan-500/50' : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'"
-             class="p-4 rounded-xl border cursor-pointer transition flex items-start space-x-3">
+             :class="hunterSource === 'maps' ? 'border-emerald-500 bg-emerald-950/20 shadow-lg ring-1 ring-emerald-500/50' : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'"
+             class="p-4 rounded-xl border cursor-pointer transition flex items-start space-x-3 relative overflow-hidden">
           <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
             <i data-lucide="map-pin" class="w-4 h-4"></i>
           </div>
           <div>
             <div class="flex items-center space-x-1.5">
               <span class="text-xs sm:text-sm font-bold text-white">Google Maps</span>
-              <span v-if="hunterSource === 'maps'" class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+              <span v-if="hunterSource === 'maps'" class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
             </div>
-            <p class="text-[11px] text-slate-400 mt-0.5">
-              Empresas locais, clínicas, escolas e comércio por cidade ou bairro.
+            <span class="inline-block px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-500/20 text-emerald-300 mt-1">
+              MOTOR NINJA 100% REAL
+            </span>
+            <p class="text-[11px] text-slate-400 mt-1">
+              Extrai direto das fichas do Google Maps via Playwright/Chromium.
             </p>
           </div>
         </div>
 
-        <!-- Option 2: CNPJ & Listas Comerciais -->
+        <!-- Option 2: Histórico de Jobs do Scraper Ninja -->
+        <div @click="hunterSource = 'ninja_history'; fetchNinjaJobs()"
+             :class="hunterSource === 'ninja_history' ? 'border-cyan-500 bg-cyan-950/20 shadow-lg ring-1 ring-cyan-500/50' : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'"
+             class="p-4 rounded-xl border cursor-pointer transition flex items-start space-x-3">
+          <div class="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center shrink-0 mt-0.5">
+            <i data-lucide="database" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-1.5">
+              <span class="text-xs sm:text-sm font-bold text-white">Jobs Anteriores</span>
+              <span v-if="hunterSource === 'ninja_history'" class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+            </div>
+            <span class="inline-block px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-cyan-500/20 text-cyan-300 mt-1">
+              CARREGAR HISTÓRICO
+            </span>
+            <p class="text-[11px] text-slate-400 mt-1">
+              Importe leads de buscas já concluídas no Scraper Ninja.
+            </p>
+          </div>
+        </div>
+
+        <!-- Option 3: CNPJ & Listas Comerciais -->
         <div @click="hunterSource = 'cnpj'"
-             :class="hunterSource === 'cnpj' ? 'border-cyan-500 bg-cyan-950/20 shadow-lg ring-1 ring-cyan-500/50' : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'"
+             :class="hunterSource === 'cnpj' ? 'border-blue-500 bg-blue-950/20 shadow-lg ring-1 ring-blue-500/50' : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'"
              class="p-4 rounded-xl border cursor-pointer transition flex items-start space-x-3">
           <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
             <i data-lucide="building-2" class="w-4 h-4"></i>
@@ -1252,97 +1282,152 @@
           <div>
             <div class="flex items-center space-x-1.5">
               <span class="text-xs sm:text-sm font-bold text-white">CNPJ & Listas</span>
-              <span v-if="hunterSource === 'cnpj'" class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+              <span v-if="hunterSource === 'cnpj'" class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping"></span>
             </div>
-            <p class="text-[11px] text-slate-400 mt-0.5">
-              Empresas ativas e contatos comerciais por CNAE, segmento e DDD.
+            <span class="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-500/20 text-blue-300 mt-1">
+              IA WEB SCAN
+            </span>
+            <p class="text-[11px] text-slate-400 mt-1">
+              Cadastros públicos de empresas ativas por segmento e DDD.
             </p>
           </div>
         </div>
 
-        <!-- Option 3: Instagram -->
+        <!-- Option 4: Instagram -->
         <div @click="hunterSource = 'instagram'"
-             :class="hunterSource === 'instagram' ? 'border-cyan-500 bg-cyan-950/20 shadow-lg ring-1 ring-cyan-500/50' : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'"
+             :class="hunterSource === 'instagram' ? 'border-pink-500 bg-pink-950/20 shadow-lg ring-1 ring-pink-500/50' : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'"
              class="p-4 rounded-xl border cursor-pointer transition flex items-start space-x-3">
           <div class="w-8 h-8 rounded-lg bg-pink-500/10 text-pink-400 flex items-center justify-center shrink-0 mt-0.5">
             <i data-lucide="instagram" class="w-4 h-4"></i>
           </div>
           <div>
             <div class="flex items-center space-x-1.5">
-              <span class="text-xs sm:text-sm font-bold text-white">Instagram</span>
-              <span v-if="hunterSource === 'instagram'" class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+              <span class="text-xs sm:text-sm font-bold text-white">Instagram Bio</span>
+              <span v-if="hunterSource === 'instagram'" class="w-1.5 h-1.5 rounded-full bg-pink-400 animate-ping"></span>
             </div>
-            <p class="text-[11px] text-slate-400 mt-0.5">
-              Perfis comerciais com WhatsApp ou links de contato na bio.
+            <span class="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-pink-500/20 text-pink-300 mt-1">
+              IA WEB SCAN
+            </span>
+            <p class="text-[11px] text-slate-400 mt-1">
+              Perfis comerciais com WhatsApp ou links na bio.
             </p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Controls Mode A: Carregar Job do Ninja -->
+      <div v-if="hunterSource === 'ninja_history'" class="glass rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-slate-800 space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
+          <div>
+            <span class="text-xs font-bold text-white flex items-center space-x-1.5">
+              <i data-lucide="database" class="w-3.5 h-3.5 text-cyan-400"></i>
+              <span>Selecione uma busca salva no Scraper Ninja</span>
+            </span>
+            <span class="text-[11px] text-slate-400">Puxa instantaneamente o arquivo de leads minerados do Google Maps.</span>
+          </div>
+          <button type="button" @click="fetchNinjaJobs" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700 flex items-center space-x-1.5 self-start">
+            <i data-lucide="refresh-cw" class="w-3 h-3" :class="{'animate-spin': hunterLoadingJob}"></i>
+            <span>Atualizar Lista ({{ hunterNinjaJobs.length }} jobs)</span>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+          <div class="md:col-span-9 space-y-1.5">
+            <label class="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Busca Realizada:</label>
+            <select v-model="hunterSelectedJobId" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-cyan-500 font-mono">
+              <option value="">-- Escolha um Job do Scraper Ninja --</option>
+              <option v-for="j in hunterNinjaJobs" :key="j.ID" :value="j.ID">
+                {{ j.Name || 'Sem nome' }} [Status: {{ j.Status }}] — {{ formatJobDate(j.Date) }}
+              </option>
+            </select>
+          </div>
+          <div class="md:col-span-3">
+            <button type="button" @click="loadNinjaJobLeads" :disabled="!hunterSelectedJobId || hunterLoadingJob"
+                    class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 disabled:opacity-40 text-slate-950 font-bold text-xs tracking-wide shadow-lg transition flex items-center justify-center space-x-2 active:scale-95">
+              <i data-lucide="download" class="w-4 h-4 fill-slate-950" :class="{'animate-spin': hunterLoadingJob}"></i>
+              <span>{{ hunterLoadingJob ? 'Carregando Leads...' : 'Carregar Leads do Job' }}</span>
+            </button>
           </div>
         </div>
       </div>
 
-      <!-- Search Controls Bar -->
-      <div class="glass rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-slate-800 space-y-3">
+      <!-- Controls Mode B: Disparar Busca ao Vivo (Maps / CNPJ / Instagram) -->
+      <div v-else class="glass rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-slate-800 space-y-3">
         <form @submit.prevent="executeHunterSearch" class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
           
           <!-- Nicho / Segmento -->
           <div class="md:col-span-5 space-y-1.5">
             <label class="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1">
-              <i data-lucide="search" class="w-3.5 h-3.5 text-cyan-400"></i>
+              <i data-lucide="search" class="w-3.5 h-3.5 text-emerald-400"></i>
               <span>Nicho / Ramo de Atividade:</span>
             </label>
             <input type="text" v-model="hunterNiche"
-                   placeholder="Ex.: Escolas de Idiomas, Clínicas Odontológicas, Imobiliárias..."
-                   class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+                   placeholder="Ex.: Fisioterapia, Escolas, Academias, Imobiliárias..."
+                   class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500">
             <!-- Quick Chips -->
             <div class="flex items-center space-x-1.5 overflow-x-auto text-[10px] text-slate-400 scrollbar-thin pt-0.5">
               <span class="shrink-0 text-slate-500">Sugestões:</span>
+              <button type="button" @click="hunterNiche = 'Fisioterapia'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Fisioterapia</button>
+              <button type="button" @click="hunterNiche = 'Academias e Crossfit'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Academias</button>
               <button type="button" @click="hunterNiche = 'Escolas e Colégios'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Escolas</button>
-              <button type="button" @click="hunterNiche = 'Clínicas Odontológicas'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Odontologia</button>
-              <button type="button" @click="hunterNiche = 'Imobiliárias e Corretores'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Imobiliárias</button>
-              <button type="button" @click="hunterNiche = 'Estética e Beleza'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Estética</button>
+              <button type="button" @click="hunterNiche = 'Clínicas Odontológicas'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Odonto</button>
             </div>
           </div>
 
           <!-- Cidade / Região -->
           <div class="md:col-span-4 space-y-1.5">
             <label class="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1">
-              <i data-lucide="map-pin" class="w-3.5 h-3.5 text-cyan-400"></i>
+              <i data-lucide="map-pin" class="w-3.5 h-3.5 text-emerald-400"></i>
               <span>Cidade / Região ou DDD:</span>
             </label>
             <input type="text" v-model="hunterLocation"
-                   placeholder="Ex.: Francisco Beltrão, PR ou Pato Branco ou DDD 46"
-                   class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+                   placeholder="Ex.: Salto do Lontra, PR ou Francisco Beltrão, PR"
+                   class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500">
             <!-- Quick Chips -->
             <div class="flex items-center space-x-1.5 overflow-x-auto text-[10px] text-slate-400 scrollbar-thin pt-0.5">
               <span class="shrink-0 text-slate-500">Cidades:</span>
+              <button type="button" @click="hunterLocation = 'Salto do Lontra, PR'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Salto do Lontra</button>
               <button type="button" @click="hunterLocation = 'Francisco Beltrão, PR'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Beltrão</button>
               <button type="button" @click="hunterLocation = 'Pato Branco, PR'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Pato Branco</button>
               <button type="button" @click="hunterLocation = 'Cascavel, PR'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Cascavel</button>
-              <button type="button" @click="hunterLocation = 'Curitiba, PR'" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 shrink-0">Curitiba</button>
             </div>
           </div>
 
           <!-- Submit Button -->
           <div class="md:col-span-3">
             <button type="submit" :disabled="hunterSearching || !hunterNiche || !hunterLocation"
-                    class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-40 text-slate-950 font-bold text-xs tracking-wide shadow-lg transition flex items-center justify-center space-x-2 active:scale-95">
+                    :class="hunterSource === 'maps' ? 'from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500' : 'from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500'"
+                    class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r disabled:opacity-40 text-slate-950 font-bold text-xs tracking-wide shadow-lg transition flex items-center justify-center space-x-2 active:scale-95">
               <i data-lucide="sparkles" class="w-4 h-4 fill-slate-950" :class="{'animate-spin': hunterSearching}"></i>
-              <span>{{ hunterSearching ? 'Minerando na Web...' : 'Buscar com IA' }}</span>
+              <span>{{ hunterSearching ? 'Minerando...' : (hunterSource === 'maps' ? 'Disparar Scraper Ninja' : 'Buscar com IA') }}</span>
             </button>
           </div>
 
         </form>
       </div>
 
-      <!-- Search Progress / Results -->
+      <!-- Search Progress -->
       <div v-if="hunterSearching" class="glass rounded-xl p-12 text-center text-slate-400 space-y-3 border border-slate-800">
         <div class="relative w-12 h-12 mx-auto">
-          <div class="w-12 h-12 rounded-full border-2 border-cyan-500/20 border-t-cyan-400 animate-spin"></div>
-          <i data-lucide="crosshair" class="w-6 h-6 text-cyan-400 absolute inset-0 m-auto"></i>
+          <div class="w-12 h-12 rounded-full border-2 border-emerald-500/20 border-t-emerald-400 animate-spin"></div>
+          <i data-lucide="crosshair" class="w-6 h-6 text-emerald-400 absolute inset-0 m-auto"></i>
         </div>
-        <h3 class="text-sm font-bold text-slate-200">Varrendo {{ hunterSource.toUpperCase() }} em busca de contatos reais...</h3>
-        <p class="text-xs text-slate-500 max-w-md mx-auto">
-          Localizando empresas em "{{ hunterLocation }}" no nicho "{{ hunterNiche }}", extraindo e validando números de WhatsApp.
+        <h3 class="text-sm font-bold text-slate-200">
+          {{ hunterSource === 'maps' ? 'Scraper Ninja minerando Google Maps oficial...' : ('Varrendo ' + hunterSource.toUpperCase() + '...') }}
+        </h3>
+        <p class="text-xs text-slate-400 max-w-md mx-auto">
+          Navegando via Chromium Headless em "{{ hunterLocation }}" para o segmento "{{ hunterNiche }}", abrindo fichas oficiais e extraindo telefones celulares e comerciais.
         </p>
+      </div>
+
+      <!-- Job Notice Banner if present -->
+      <div v-if="hunterJobNotice" class="p-3.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 flex items-center justify-between text-xs text-cyan-300">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="info" class="w-4 h-4 text-cyan-400 shrink-0"></i>
+          <span>{{ hunterJobNotice }}</span>
+        </div>
+        <button @click="hunterJobNotice = null" class="text-slate-400 hover:text-white text-xs">✕</button>
       </div>
 
       <!-- Results Table -->
@@ -1421,9 +1506,15 @@
                 <!-- Nome -->
                 <td class="p-3.5">
                   <div class="font-bold text-slate-200">{{ lead.name }}</div>
-                  <div class="text-[10px] text-slate-500 flex items-center space-x-1 mt-0.5">
-                    <span class="px-1.5 py-0.2 rounded bg-slate-800 text-[9px] font-mono uppercase">{{ lead.source }}</span>
-                    <span class="sm:hidden text-slate-400">• {{ lead.city }}</span>
+                  <div class="text-[10px] text-slate-400 flex items-center space-x-2 mt-0.5 flex-wrap">
+                    <span class="px-1.5 py-0.2 rounded bg-slate-800 text-[9px] font-mono uppercase text-cyan-300 font-semibold">{{ lead.source }}</span>
+                    <span v-if="lead.rating" class="text-amber-400 font-bold flex items-center">
+                      ★ {{ lead.rating }} <span v-if="lead.review_count" class="text-slate-500 font-normal ml-0.5">({{ lead.review_count }})</span>
+                    </span>
+                    <a v-if="lead.website" :href="lead.website" target="_blank" class="text-cyan-400 hover:underline flex items-center space-x-0.5 truncate max-w-[140px]" title="Abrir Website">
+                      <i data-lucide="globe" class="w-2.5 h-2.5"></i>
+                      <span>{{ lead.website.replace('https://','').replace('http://','').replace('www.','') }}</span>
+                    </a>
                   </div>
                 </td>
 
@@ -1576,14 +1667,18 @@
         agentTyping: false,
         eventSource: null,
         hunterSource: 'maps',
-        hunterNiche: 'Escolas',
-        hunterLocation: 'Francisco Beltrão, PR',
+        hunterNiche: 'Fisioterapia',
+        hunterLocation: 'Salto do Lontra, PR',
         hunterSearching: false,
         hunterResults: [],
         selectedHunterLeads: [],
         hunterTargetCampaign: 'lotes_hunter_captacao',
         hunterImporting: false,
         hunterImportSuccess: null,
+        hunterNinjaJobs: [],
+        hunterSelectedJobId: '',
+        hunterLoadingJob: false,
+        hunterJobNotice: null,
         activeLead: null,
         conversationMessages: [],
         conversationLoading: false,
@@ -1646,6 +1741,7 @@
       this.fetchStats();
       this.fetchCampaigns();
       this.fetchLeads();
+      this.fetchNinjaJobs();
       this.initLiveStream();
       if (window.location.hash === '#chat') {
         this.openLiveChatView();
@@ -2015,12 +2111,65 @@
         }
         return p;
       },
+      async fetchNinjaJobs() {
+        try {
+          const res = await fetch('/painel/api/hunter/ninja/jobs');
+          if (res.ok) {
+            const data = await res.json();
+            this.hunterNinjaJobs = data.jobs || [];
+            if (!this.hunterSelectedJobId && this.hunterNinjaJobs.length > 0) {
+              this.hunterSelectedJobId = this.hunterNinjaJobs[0].ID;
+            }
+          }
+        } catch (e) {
+          console.error('Erro ao buscar jobs ninja:', e);
+        } finally {
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        }
+      },
+      async loadNinjaJobLeads() {
+        if (!this.hunterSelectedJobId || this.hunterLoadingJob) return;
+        this.hunterLoadingJob = true;
+        this.hunterResults = [];
+        this.selectedHunterLeads = [];
+        this.hunterImportSuccess = null;
+        this.hunterJobNotice = null;
+        try {
+          const res = await fetch('/painel/api/hunter/ninja/job/' + this.hunterSelectedJobId + '/leads');
+          if (res.ok) {
+            const data = await res.json();
+            this.hunterResults = data.leads || [];
+            this.selectedHunterLeads = this.hunterResults.filter(l => l.valid_phone && !l.already_in_db);
+            const jobObj = this.hunterNinjaJobs.find(j => j.ID === this.hunterSelectedJobId);
+            const jName = (jobObj && jobObj.Name) || data.job_name || 'Job selecionado';
+            this.hunterJobNotice = 'Leads carregados do Scraper Ninja (' + this.hunterResults.length + ' encontrados na busca: "' + jName + '")';
+          } else {
+            const err = await res.json();
+            alert('Erro ao carregar job: ' + (err.detail || 'Falha ao carregar leads'));
+          }
+        } catch (e) {
+          alert('Erro de conexão: ' + e.message);
+        } finally {
+          this.hunterLoadingJob = false;
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        }
+      },
+      formatJobDate(dateStr) {
+        if (!dateStr) return '';
+        try {
+          const d = new Date(dateStr);
+          return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        } catch (e) {
+          return dateStr;
+        }
+      },
       async executeHunterSearch() {
         if (!this.hunterNiche || !this.hunterLocation || this.hunterSearching) return;
         this.hunterSearching = true;
         this.hunterResults = [];
         this.selectedHunterLeads = [];
         this.hunterImportSuccess = null;
+        this.hunterJobNotice = null;
         try {
           const res = await fetch('/painel/api/hunter/search', {
             method: 'POST',
@@ -2029,13 +2178,17 @@
               source: this.hunterSource,
               niche: this.hunterNiche,
               location: this.hunterLocation,
-              limit: 15
+              limit: 25
             })
           });
           if (res.ok) {
             const data = await res.json();
             this.hunterResults = data.leads || [];
             this.selectedHunterLeads = this.hunterResults.filter(l => l.valid_phone && !l.already_in_db);
+            if (data.message) {
+              this.hunterJobNotice = data.message;
+            }
+            await this.fetchNinjaJobs();
           } else {
             const err = await res.json();
             alert('Erro na mineração: ' + (err.detail || 'Falha ao buscar contatos'));

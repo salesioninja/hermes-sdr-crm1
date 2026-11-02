@@ -619,10 +619,92 @@ async def sdr_dispatcher_loop():
             print(f"[Hermes SDR] Erro no loop de disparo: {general_err}")
             await asyncio.sleep(10)
 
+async def scheduled_messages_worker():
+    print("[Hermes SDR] Worker de Mensagens Agendadas Iniciado!")
+    tz_br = timezone(timedelta(hours=-3))
+    while True:
+        try:
+            await asyncio.sleep(15)
+            now_utc_iso = datetime.now(timezone.utc).isoformat()
+            
+            with get_db() as conn:
+                conn.execute("""
+                CREATE TABLE IF NOT EXISTS scheduled_dispatches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phone TEXT NOT NULL,
+                    lead_name TEXT,
+                    message TEXT NOT NULL,
+                    scheduled_for TEXT NOT NULL,
+                    status TEXT DEFAULT 'PENDING',
+                    created_at TEXT NOT NULL,
+                    sent_at TEXT,
+                    error TEXT
+                )
+                """)
+                
+                pending = conn.execute("""
+                SELECT id, phone, lead_name, message, scheduled_for 
+                FROM scheduled_dispatches 
+                WHERE status = 'PENDING' AND scheduled_for <= ?
+                ORDER BY scheduled_for ASC
+                """, (now_utc_iso,)).fetchall()
+                
+                if not pending:
+                    continue
+
+                for item in pending:
+                    disp_id = item["id"]
+                    phone = item["phone"]
+                    name = item["lead_name"] or "Contato"
+                    msg = item["message"]
+                    target_jid = f"{phone}@s.whatsapp.net"
+                    
+                    try:
+                        async with httpx.AsyncClient(timeout=15.0) as client:
+                            await client.post(f"{BRIDGE_URL}/typing", json={"chatId": target_jid, "presence": "composing"})
+                            await asyncio.sleep(2.0)
+                            await client.post(f"{BRIDGE_URL}/typing", json={"chatId": target_jid, "presence": "paused"})
+                            res = await client.post(f"{BRIDGE_URL}/send", json={"chatId": target_jid, "message": msg})
+                            
+                        now_sent = datetime.now(timezone.utc).isoformat()
+                        if res.status_code == 200:
+                            conn.execute("UPDATE scheduled_dispatches SET status = 'SENT', sent_at = ? WHERE id = ?", (now_sent, disp_id))
+                            
+                            now_iso = datetime.now().isoformat()
+                            lead_row = conn.execute("SELECT id FROM leads WHERE phone = ? ORDER BY id DESC LIMIT 1", (phone,)).fetchone()
+                            if lead_row:
+                                conn.execute("""
+                                INSERT INTO conversation_messages (lead_id, lead_phone, role, message, created_at)
+                                VALUES (?, ?, 'assistant', ?, ?)
+                                """, (lead_row["id"], phone, msg, now_iso))
+                                conn.execute("UPDATE leads SET last_message_at = ?, message_sent = ? WHERE id = ?", (now_iso, msg, lead_row["id"]))
+                            
+                            time_br = datetime.now(tz_br).strftime("%H:%M")
+                            notify_text = (
+                                f"⏰ *HERMES: MENSAGEM AGENDADA ENTREGUE!*\n\n"
+                                f"👤 *Destinatário:* {name} (+{phone})\n"
+                                f"🕐 *Entregue às:* {time_br}\n"
+                                f"💬 *Mensagem enviada:*\n\"{msg}\""
+                            )
+                            async with httpx.AsyncClient(timeout=10.0) as client:
+                                await client.post(f"{BRIDGE_URL}/send", json={"chatId": f"{OWNER_PHONE}@s.whatsapp.net", "message": notify_text})
+                                
+                            print(f"[Hermes SDR] Mensagem agendada #{disp_id} para {phone} entregue com sucesso!")
+                        else:
+                            conn.execute("UPDATE scheduled_dispatches SET status = 'FAILED', error = ? WHERE id = ?", (res.text, disp_id))
+                    except Exception as err:
+                        print(f"[Hermes SDR] Erro ao enviar mensagem agendada #{disp_id}: {err}")
+                        conn.execute("UPDATE scheduled_dispatches SET status = 'FAILED', error = ? WHERE id = ?", (str(err), disp_id))
+                conn.commit()
+        except Exception as e:
+            print(f"[Hermes SDR] Erro no worker de mensagens agendadas: {e}")
+
+
 @app.on_event("startup")
 async def on_startup():
     init_db()
     asyncio.create_task(sdr_dispatcher_loop())
+    asyncio.create_task(scheduled_messages_worker())
 
 # -------------------------------------------------------------
 # REST API Endpoints

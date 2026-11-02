@@ -1,0 +1,93 @@
+docker-compose*.yml
+!docker-compose.example.yml
+# Environment & Secrets
+.env
+*.env
+json/
+*.pem
+*.key
+*.token
+*.json
+!skills/**/*.json
+!skills/**/references/*.json
+
+# Credentials / VPS scripts with passwords
+vps_exec.py
+deploy_*.py
+upload_*.py
+
+# Databases & State
+*.db
+*.sqlite*
+*.sqlite3
+
+# Large Data, Leads & Archives
+*.zip
+*.csv
+*.xlsx
+*.docx
+++Todos os Leads de Grupos/
+lotes_agenda_telefonica/
+all_extracted_phones.txt
+
+# Diagnostic / Ad-hoc Scratch Scripts
+check_*.py
+test_*.py
+audit_*.py
+apply_*.py
+analyze_*.py
+update_*.py
+verify_*.py
+patch_*.py
+scan_*.py
+search_*.py
+inspect_*.py
+run_*.py
+list_*.py
+count_*.py
+parse_*.py
+clean_*.py
+export_*.py
+find_*.py
+setup_*.py
+switch_*.py
+sync_*.py
+prepare_*.py
+query_*.py
+read_*.py
+del_*.py
+head_*.py
+fix_*.py
+local_*.py
+create_*.py
+cross_*.py
+execute_*.py
+explain_*.py
+fetch_*.py
+filter_*.py
+show_*.py
+inject_*.py
+register_*.py
+classify_*.py
+build_livechat_ui.py
+group_extractor.js
+
+# Logs and text files
+*.log
+*.txt
+!requirements.txt
+
+# Python cache & virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

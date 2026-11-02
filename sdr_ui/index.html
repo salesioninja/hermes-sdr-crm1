@@ -1,0 +1,1794 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Hermes Outbound SDR - Central de Campanhas & Prospecção</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    [v-cloak] { display: none; }
+    .glass {
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .neon-glow-green {
+      box-shadow: 0 0 25px rgba(16, 185, 129, 0.35);
+    }
+    .neon-glow-amber {
+      box-shadow: 0 0 25px rgba(245, 158, 11, 0.35);
+    }
+    .wa-bubble {
+      background: #005c4b;
+      border-radius: 8px 8px 2px 8px;
+    }
+    /* Touch friendly custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b0f19;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #232d42;
+      border-radius: 4px;
+    }
+    /* Mobile safe area padding */
+    .pb-safe {
+      padding-bottom: env(safe-area-inset-bottom, 16px);
+    }
+  </style>
+</head>
+<body class="bg-[#090d16] text-slate-100 min-h-screen font-sans antialiased selection:bg-emerald-500 selection:text-white pb-20 sm:pb-6">
+
+<div id="app" v-cloak class="min-h-screen flex flex-col">
+
+  <!-- TOPBAR -->
+  <header class="border-b border-slate-800/80 bg-[#0c121e]/95 sticky top-0 z-40 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+      
+      <!-- Top Row -->
+      <div class="h-14 sm:h-16 flex items-center justify-between">
+        
+        <!-- Logo & Branding -->
+        <div class="flex items-center space-x-2.5 sm:space-x-3">
+          <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
+            <i data-lucide="send" class="w-4 h-4 sm:w-5 sm:h-5 text-slate-950 stroke-[2.5]"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-1.5 sm:space-x-2">
+              <span class="font-extrabold tracking-tight text-base sm:text-lg text-white">HERMES <span class="text-emerald-400">SDR</span></span>
+              <span class="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                v2.0
+              </span>
+            </div>
+            <p class="text-[10px] sm:text-xs text-slate-400 hidden xs:block">Prospecção Ativa & Pacing Anti-Ban</p>
+          </div>
+        </div>
+
+        <!-- Navigation View Tabs -->
+        <div class="flex items-center space-x-1 p-1 bg-slate-900/90 rounded-xl border border-slate-800 ml-2 sm:ml-4">
+          <button @click="currentView = 'dashboard'" 
+                  class="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition"
+                  :class="currentView === 'dashboard' ? 'bg-emerald-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'">
+            <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i>
+            <span>Painel</span>
+          </button>
+          <button @click="openLiveChatView" 
+                  class="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition relative"
+                  :class="currentView === 'livechat' ? 'bg-emerald-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'">
+            <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
+            <span>Chat ao Vivo</span>
+            <span v-if="(stats.total_scheduled || 0) + (stats.total_replies || 0) > 0" 
+                  class="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-purple-500 text-white animate-pulse">
+              {{ (stats.total_scheduled || 0) + (stats.total_replies || 0) }}
+            </span>
+          </button>
+        </div>
+
+        <!-- Desktop Action Buttons -->
+        <div class="hidden md:flex items-center space-x-2.5">
+          <!-- WhatsApp Dot -->
+          <div class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-xs"
+               :class="stats.whatsapp_connected ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300' : 'bg-red-950/30 border-red-500/30 text-red-300'">
+            <span class="w-2 h-2 rounded-full" :class="stats.whatsapp_connected ? 'bg-emerald-400 animate-ping' : 'bg-red-400'"></span>
+            <span class="font-medium">{{ stats.whatsapp_connected ? 'Conectado' : 'Desconectado' }}</span>
+          </div>
+
+          <!-- Mode Pill -->
+          <button @click="controlAction('toggle_dry_run')"
+                  class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition"
+                  :class="stats.dry_run ? 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'">
+            <i :data-lucide="stats.dry_run ? 'eye' : 'zap'" class="w-3.5 h-3.5"></i>
+            <span>{{ stats.dry_run ? 'Modo Simulação' : 'Modo WhatsApp Real' }}</span>
+          </button>
+
+          <!-- Botão IA SDR Auto-Responder -->
+          <button @click="controlAction('toggle_ai_reply')"
+                  class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition"
+                  :class="stats.ai_auto_reply ? 'bg-purple-500/10 border-purple-500/30 text-purple-300 hover:bg-purple-500/20' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'"
+                  :title="stats.ai_auto_reply ? 'Hermes responde leads automaticamente com IA' : 'Respostas automáticas de leads pausadas'">
+            <i data-lucide="bot" class="w-3.5 h-3.5"></i>
+            <span>{{ stats.ai_auto_reply ? 'IA Responder: ATIVO' : 'IA Responder: PAUSADO' }}</span>
+          </button>
+
+          <!-- Botão Lista Manual / Teste -->
+          <button @click="openManualModal"
+                  class="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition flex items-center space-x-1.5 shadow-sm">
+            <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+            <span>+ Teste Manual</span>
+          </button>
+
+          <!-- Botão Sincronizar Listas -->
+          <button @click="syncLeads" :disabled="syncing"
+                  class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 transition flex items-center space-x-1 border border-slate-700">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': syncing}"></i>
+            <span>{{ syncing ? 'Sincronizando...' : 'Atualizar' }}</span>
+          </button>
+
+          <!-- Link Ninja -->
+          <a href="https://wa.me/5546999765576" target="_blank"
+             class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-slate-950 transition flex items-center space-x-1">
+            <i data-lucide="message-square" class="w-3.5 h-3.5 stroke-[2.5]"></i>
+            <span>WhatsApp</span>
+          </a>
+        </div>
+
+        <!-- Mobile Header Right Quick Actions -->
+        <div class="flex md:hidden items-center space-x-1.5">
+          <!-- WhatsApp Dot -->
+          <div class="w-2.5 h-2.5 rounded-full mr-1"
+               :class="stats.whatsapp_connected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'"
+               :title="stats.whatsapp_connected ? 'WhatsApp Conectado' : 'WhatsApp Desconectado'"></div>
+
+          <!-- Quick Test Button Mobile -->
+          <button @click="openManualModal"
+                  class="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center space-x-1">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+            <span class="text-[11px]">Teste</span>
+          </button>
+
+          <!-- Quick Sync Mobile -->
+          <button @click="syncLeads" :disabled="syncing" class="p-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
+            <i data-lucide="refresh-cw" class="w-4 h-4" :class="{'animate-spin': syncing}"></i>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Mobile Sub-Bar: Quick Status & Mode Toggle (Visible on Mobile only) -->
+      <div class="md:hidden py-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] gap-2">
+        <button @click="controlAction('toggle_dry_run')"
+                class="flex-1 py-1.5 px-2.5 rounded-lg border font-semibold flex items-center justify-center space-x-1.5 transition text-center"
+                :class="stats.dry_run ? 'bg-amber-950/40 border-amber-500/30 text-amber-300' : 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'">
+          <i :data-lucide="stats.dry_run ? 'eye' : 'zap'" class="w-3 h-3"></i>
+          <span>{{ stats.dry_run ? 'Simulação (Dry-Run)' : 'WhatsApp Real' }}</span>
+        </button>
+
+        <div class="py-1.5 px-2.5 rounded-lg bg-slate-900 border border-slate-800 flex items-center space-x-1.5 shrink-0">
+          <span class="w-2 h-2 rounded-full"
+                :class="stats.global_status === 'RUNNING' ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'"></span>
+          <span class="font-bold uppercase text-[10px] text-slate-300">{{ stats.global_status }}</span>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex-1 w-full flex flex-col">
+
+    <!-- VIEW 1: DASHBOARD & CAMPANHAS -->
+    <div v-show="currentView === 'dashboard'" class="space-y-4 sm:space-y-6 w-full">
+
+    <!-- KPI & FUNNEL HERO CARDS (2x2 on Mobile, 4x1 on Desktop) -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+      
+      <!-- Card 1: Total Leads da Base -->
+      <div class="glass rounded-xl sm:rounded-2xl p-3.5 sm:p-5 relative overflow-hidden group hover:border-slate-700 transition">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Base de Leads</span>
+          <div class="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+            <i data-lucide="users" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+          </div>
+        </div>
+        <div class="mt-2 sm:mt-3">
+          <h3 class="text-xl sm:text-3xl font-extrabold text-white tracking-tight">{{ stats.total_leads?.toLocaleString('pt-BR') || '0' }}</h3>
+          <p class="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">
+            <span class="text-emerald-400 font-semibold">{{ stats.total_pending?.toLocaleString('pt-BR') }}</span> na fila
+          </p>
+        </div>
+      </div>
+
+      <!-- Card 2: Disparados Hoje / Cota Diária -->
+      <div class="glass rounded-xl sm:rounded-2xl p-3.5 sm:p-5 relative overflow-hidden group hover:border-slate-700 transition">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Enviados Hoje</span>
+          <div class="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+            <i data-lucide="send" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+          </div>
+        </div>
+        <div class="mt-2 sm:mt-3">
+          <div class="flex items-baseline space-x-1.5">
+            <h3 class="text-xl sm:text-3xl font-extrabold text-white tracking-tight">{{ stats.sent_today || 0 }}</h3>
+            <span class="text-xs sm:text-sm font-semibold text-slate-400">/ {{ stats.daily_limit }} máx</span>
+          </div>
+          <!-- Progress bar -->
+          <div class="w-full bg-slate-800 rounded-full h-1 sm:h-1.5 mt-2 overflow-hidden">
+            <div class="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500"
+                 :style="{ width: Math.min(100, ((stats.sent_today || 0) / (stats.daily_limit || 1)) * 100) + '%' }"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 3: Respostas Recebidas -->
+      <div class="glass rounded-xl sm:rounded-2xl p-3.5 sm:p-5 relative overflow-hidden group hover:border-slate-700 transition">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Respostas</span>
+          <div class="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+            <i data-lucide="message-circle" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+          </div>
+        </div>
+        <div class="mt-2 sm:mt-3">
+          <div class="flex items-baseline space-x-1.5">
+            <h3 class="text-xl sm:text-3xl font-extrabold text-white tracking-tight">{{ stats.total_replies || 0 }}</h3>
+            <span class="text-[10px] sm:text-xs font-medium text-emerald-400">
+              ({{ stats.sent_today > 0 ? (((stats.total_replies || 0) / stats.sent_today) * 100).toFixed(0) : 0 }}%)
+            </span>
+          </div>
+          <p class="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Interações WhatsApp</p>
+        </div>
+      </div>
+
+      <!-- Card 4: Reuniões na Agenda Google -->
+      <div class="glass rounded-xl sm:rounded-2xl p-3.5 sm:p-5 relative overflow-hidden group hover:border-slate-700 transition">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Reuniões</span>
+          <div class="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-teal-500/10 text-teal-400 flex items-center justify-center">
+            <i data-lucide="calendar-check" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+          </div>
+        </div>
+        <div class="mt-2 sm:mt-3">
+          <h3 class="text-xl sm:text-3xl font-extrabold text-white tracking-tight">{{ stats.total_scheduled || 0 }}</h3>
+          <p class="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate flex items-center">
+            <i data-lucide="check" class="w-3 h-3 text-emerald-400 mr-0.5"></i>
+            Google Calendar
+          </p>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- CONTROL PANEL & PACING (Mobile Optimized) -->
+    <section class="glass rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-800 space-y-4">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        
+        <!-- Big Action Buttons (Full width on mobile) -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          <!-- Start Button -->
+          <button v-if="stats.global_status !== 'RUNNING'"
+                  @click="controlAction('start')"
+                  class="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-sm tracking-wide shadow-lg neon-glow-green transition-all flex items-center justify-center space-x-2 active:scale-95">
+            <i data-lucide="play" class="w-4 h-4 fill-slate-950"></i>
+            <span>INICIAR PROSPECÇÃO</span>
+          </button>
+
+          <!-- Pause Button -->
+          <button v-else
+                  @click="controlAction('pause')"
+                  class="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-sm tracking-wide shadow-lg neon-glow-amber transition-all flex items-center justify-center space-x-2 animate-pulse active:scale-95">
+            <i data-lucide="pause" class="w-4 h-4 fill-slate-950"></i>
+            <span>PAUSAR DISPAROS</span>
+          </button>
+
+          <!-- Quick Test Button (Visible on mobile/desktop) -->
+          <button @click="openManualModal"
+                  class="w-full sm:w-auto px-4 py-3.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs sm:text-sm font-bold transition flex items-center justify-center space-x-2">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+            <span>+ Teste Manual</span>
+          </button>
+        </div>
+
+        <!-- Pacing Controls (Clean Touch Layout) -->
+        <div class="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-3 text-xs">
+          <!-- Daily Limit -->
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 sm:p-3 col-span-1">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-slate-400 font-medium text-[10px] sm:text-xs">Limite/Dia</span>
+              <span class="text-white font-bold text-xs">{{ settings.daily_limit }} msgs</span>
+            </div>
+            <input type="range" min="10" max="80" step="5" v-model.number="settings.daily_limit" @change="saveSettings"
+                   class="w-full accent-emerald-500 cursor-pointer h-2">
+          </div>
+
+          <!-- Human Delay -->
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 sm:p-3 col-span-1">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-slate-400 font-medium text-[10px] sm:text-xs">Intervalo</span>
+              <span class="text-white font-bold text-xs">{{ settings.min_delay }}s-{{ settings.max_delay }}s</span>
+            </div>
+            <div class="flex items-center space-x-1">
+              <input type="number" min="30" max="120" v-model.number="settings.min_delay" @change="saveSettings"
+                     class="w-full bg-slate-800 text-center rounded border border-slate-700 text-white py-0.5 text-xs">
+              <span class="text-slate-500">-</span>
+              <input type="number" min="90" max="360" v-model.number="settings.max_delay" @change="saveSettings"
+                     class="w-full bg-slate-800 text-center rounded border border-slate-700 text-white py-0.5 text-xs">
+            </div>
+          </div>
+
+          <!-- Anti-Ban Shield Badge (Full width on mobile) -->
+          <div class="col-span-2 sm:col-span-auto bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-2.5 sm:p-3 flex items-center justify-between sm:justify-start space-x-2 text-emerald-400">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="shield-check" class="w-4 h-4 sm:w-5 sm:h-5 shrink-0"></i>
+              <div>
+                <div class="font-bold text-xs">Anti-Ban 100% Ativo</div>
+                <div class="text-[9px] text-emerald-400/80">Digitação + Delays Humanizados</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- MOBILE TABS SWITCHER (Campanhas vs Mensagem) -->
+    <div class="flex lg:hidden rounded-xl bg-slate-900/90 p-1 border border-slate-800 text-xs font-semibold">
+      <button @click="mobileTab = 'campaigns'"
+              class="flex-1 py-2 rounded-lg transition text-center flex items-center justify-center space-x-1.5"
+              :class="mobileTab === 'campaigns' ? 'bg-emerald-600 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-white'">
+        <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+        <span>Listas & Nichos</span>
+      </button>
+
+      <button @click="mobileTab = 'copywriter'"
+              class="flex-1 py-2 rounded-lg transition text-center flex items-center justify-center space-x-1.5"
+              :class="mobileTab === 'copywriter' ? 'bg-emerald-600 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-white'">
+        <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+        <span>Mensagem & Preview</span>
+      </button>
+    </div>
+
+    <!-- CAMPAIGN SELECTOR & MESSAGE COPYWRITER -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
+      
+      <!-- Left: Campaign Selector List (5 cols on desktop, tab on mobile) -->
+      <div v-show="mobileTab === 'campaigns' || isDesktop" 
+           class="lg:col-span-5 glass rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-slate-800 flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-bold text-white flex items-center space-x-2">
+            <i data-lucide="layers" class="w-4 h-4 text-emerald-400"></i>
+            <span>Segmentações & Campanhas</span>
+          </h2>
+          <span class="text-xs text-slate-400">{{ campaigns.length }} listas</span>
+        </div>
+
+        <div class="space-y-2 overflow-y-auto max-h-[380px] sm:max-h-[460px] pr-1">
+          <div v-for="c in campaigns" :key="c.slug"
+               @click="selectCampaign(c)"
+               class="p-3 sm:p-3.5 rounded-xl border transition-all cursor-pointer relative active:scale-[0.98]"
+               :class="settings.active_campaign === c.slug 
+                 ? 'bg-emerald-950/30 border-emerald-500/50 shadow-md shadow-emerald-500/10' 
+                 : 'bg-slate-900/40 border-slate-800/80 hover:bg-slate-800/50 hover:border-slate-700'">
+            
+            <div class="flex items-start justify-between gap-2">
+              <div class="space-y-1 min-w-0">
+                <div class="flex items-center space-x-1.5 flex-wrap">
+                  <span class="font-bold text-xs sm:text-sm text-white truncate">{{ c.name }}</span>
+                  <span v-if="settings.active_campaign === c.slug" 
+                        class="text-[8px] font-bold px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950 uppercase shrink-0">
+                    Ativa
+                  </span>
+                </div>
+                <div class="text-[11px] text-slate-400 flex items-center space-x-2 truncate">
+                  <span>{{ c.category }}</span>
+                  <span>•</span>
+                  <span>{{ c.total_leads }} leads</span>
+                </div>
+              </div>
+
+              <div class="text-right shrink-0">
+                <span class="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">
+                  {{ c.pending_leads }} pendentes
+                </span>
+                <div class="text-[10px] text-slate-500 mt-0.5">
+                  {{ c.sent_leads }} contatados
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Message Template & Real WhatsApp Simulator (7 cols on desktop, tab on mobile) -->
+      <div v-show="mobileTab === 'copywriter' || isDesktop" 
+           class="lg:col-span-7 glass rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-slate-800 flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="edit-3" class="w-4 h-4 text-emerald-400"></i>
+            <h2 class="text-sm font-bold text-white">Copywriting & Spintax</h2>
+          </div>
+          <button @click="testAiVariations" :disabled="testingAi"
+                  class="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-xs font-semibold transition flex items-center space-x-1">
+            <i data-lucide="sparkles" class="w-3 h-3"></i>
+            <span>{{ testingAi ? 'Gerando...' : 'Variação IA' }}</span>
+          </button>
+        </div>
+
+        <!-- Template Editor -->
+        <div class="space-y-2.5">
+          <textarea v-model="settings.message_template" @change="saveSettings" rows="4"
+                    class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono leading-relaxed"
+                    placeholder="Digite a mensagem usando {Olá|Oi} e variáveis como {nome}, {saudacao}..."></textarea>
+
+          <div class="flex flex-wrap items-center justify-between text-[10px] sm:text-[11px] text-slate-400 gap-1.5">
+            <div class="flex items-center space-x-1.5 flex-wrap">
+              <span>Tags:</span>
+              <code class="px-1.5 py-0.5 rounded bg-slate-800 text-emerald-400 font-mono">{saudacao}</code>
+              <code class="px-1.5 py-0.5 rounded bg-slate-800 text-emerald-400 font-mono">{nome}</code>
+              <code class="px-1.5 py-0.5 rounded bg-slate-800 text-emerald-400 font-mono">{op1|op2}</code>
+            </div>
+            <button @click="saveSettings" class="text-xs text-emerald-400 hover:text-emerald-300 font-semibold">
+              Salvar Template
+            </button>
+          </div>
+        </div>
+
+        <!-- WhatsApp Device Preview -->
+        <div class="mt-3 pt-3 border-t border-slate-800/80">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1">
+              <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
+              <span>Preview do WhatsApp</span>
+            </span>
+            <button @click="updatePreview" class="text-[11px] text-emerald-400 hover:underline">Sorteio Spintax</button>
+          </div>
+
+          <!-- Smartphone Screen Frame -->
+          <div class="bg-[#0b141a] rounded-xl p-3 border border-slate-800 max-w-full shadow-inner">
+            <div class="flex items-center space-x-2 pb-2 border-b border-slate-800/60 mb-2">
+              <div class="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                N
+              </div>
+              <div class="min-w-0">
+                <div class="text-xs font-bold text-slate-200 truncate">Salesio Ninja (Hermes)</div>
+                <div class="text-[9px] text-emerald-400">online</div>
+              </div>
+            </div>
+
+            <!-- WhatsApp Message Bubble -->
+            <div class="flex justify-end">
+              <div class="wa-bubble p-2.5 sm:p-3 max-w-[92%] sm:max-w-[85%] text-xs text-slate-100 shadow-md">
+                <div class="whitespace-pre-line leading-relaxed font-sans text-xs sm:text-[13px]">{{ previewText }}</div>
+                <div class="flex items-center justify-end space-x-1 mt-1 text-[9px] text-emerald-300/80">
+                  <span>14:32</span>
+                  <i data-lucide="check-check" class="w-3 h-3 text-sky-400"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- LEADS TABLE & REAL-TIME FEED (Responsive Table + Mobile Cards) -->
+    <section class="glass rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-slate-800">
+      
+      <!-- Table Filters & Search -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 class="text-sm sm:text-base font-bold text-white flex items-center space-x-2">
+            <i data-lucide="list-filter" class="w-4 h-4 text-emerald-400"></i>
+            <span>Fila de Leads & Histórico</span>
+          </h2>
+          <p class="text-[11px] sm:text-xs text-slate-400">Contatos em ordem de prioridade de envio</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- Status Filter -->
+          <select v-model="filterStatus" @change="fetchLeads"
+                  class="flex-1 sm:flex-initial bg-slate-900 border border-slate-700 text-xs rounded-xl px-2.5 py-2 text-slate-200 focus:outline-none">
+            <option value="all">Todos os Status</option>
+            <option value="PENDING">Pendentes</option>
+            <option value="DRY_RUN">Simulados</option>
+            <option value="SENT">Enviados</option>
+            <option value="REPLIED">Responderam</option>
+            <option value="SCHEDULED">Reunião Marcada</option>
+            <option value="OPT_OUT">Opt-out</option>
+          </select>
+
+          <!-- Search Input -->
+          <div class="relative flex-1 sm:w-60">
+            <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500"></i>
+            <input type="text" v-model="searchQuery" @keyup.enter="fetchLeads" placeholder="Buscar..."
+                   class="w-full bg-slate-900 border border-slate-700 text-xs rounded-xl pl-8 pr-3 py-2 text-slate-200 focus:outline-none">
+          </div>
+        </div>
+      </div>
+
+      <!-- DESKTOP TABLE VIEW (Visible on md and up) -->
+      <div class="hidden md:block overflow-x-auto">
+        <table class="w-full text-left text-xs text-slate-300">
+          <thead class="bg-slate-900/60 uppercase font-semibold text-[10px] text-slate-400 tracking-wider border-b border-slate-800">
+            <tr>
+              <th class="py-3 px-4">Telefone</th>
+              <th class="py-3 px-4">Nome / Segmento</th>
+              <th class="py-3 px-4">Status</th>
+              <th class="py-3 px-4">Última Ação</th>
+              <th class="py-3 px-4">Resposta do Lead</th>
+              <th class="py-3 px-4 text-right">Ação</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60">
+            <tr v-if="leads.length === 0">
+              <td colspan="6" class="py-8 text-center text-slate-500">
+                Nenhum lead encontrado para este filtro.
+              </td>
+            </tr>
+            <tr v-for="lead in leads" :key="lead.id" class="hover:bg-slate-800/30 transition">
+              <td class="py-3 px-4 font-mono font-medium text-slate-200">+{{ lead.phone }}</td>
+              <td class="py-3 px-4">
+                <div class="font-semibold text-white">{{ lead.name || 'Contato Sem Nome' }}</div>
+                <div class="text-[10px] text-slate-400">{{ lead.category }} • {{ lead.source_file }}</div>
+              </td>
+              <td class="py-3 px-4">
+                <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                      :class="{
+                        'bg-slate-800 text-slate-300 border border-slate-700': lead.status === 'PENDING',
+                        'bg-amber-500/10 text-amber-300 border border-amber-500/30': lead.status === 'DRY_RUN',
+                        'bg-blue-500/10 text-blue-300 border border-blue-500/30': lead.status === 'SENT',
+                        'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40': lead.status === 'REPLIED',
+                        'bg-purple-500/20 text-purple-300 border border-purple-500/40': lead.status === 'SCHEDULED',
+                        'bg-red-500/10 text-red-400 border border-red-500/30': lead.status === 'OPT_OUT' || lead.status === 'ERROR'
+                      }">
+                  {{ lead.status }}
+                </span>
+              </td>
+              <td class="py-3 px-4 text-slate-400">{{ lead.sent_at ? formatTime(lead.sent_at) : 'Aguardando' }}</td>
+              <td class="py-3 px-4 max-w-xs truncate" :title="lead.response">
+                <span v-if="lead.response" class="text-emerald-400 font-medium">"{{ lead.response }}"</span>
+                <span v-else class="text-slate-500">-</span>
+              </td>
+              <td class="py-3 px-4 text-right">
+                <button @click="openConversationModal(lead)"
+                        class="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-medium transition border border-slate-700 mr-1.5 text-xs">
+                  <i data-lucide="message-square" class="w-3 h-3 text-emerald-400"></i>
+                  <span>Conversa</span>
+                </button>
+                <a :href="'https://wa.me/' + lead.phone" target="_blank"
+                   class="inline-flex items-center space-x-1 px-3 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-slate-950 font-semibold transition border border-emerald-500/30">
+                  <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                  <span>WhatsApp</span>
+                </a>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- MOBILE CARDS FEED (Visible on Mobile only) -->
+      <div class="md:hidden space-y-2.5">
+        <div v-if="leads.length === 0" class="py-8 text-center text-slate-500 text-xs">
+          Nenhum lead encontrado para este filtro.
+        </div>
+
+        <div v-for="lead in leads" :key="lead.id" 
+             class="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2 shadow-sm">
+          
+          <!-- Card Header: Phone & Status -->
+          <div class="flex items-center justify-between">
+            <span class="font-mono font-bold text-sm text-white">+{{ lead.phone }}</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                  :class="{
+                    'bg-slate-800 text-slate-300 border border-slate-700': lead.status === 'PENDING',
+                    'bg-amber-500/10 text-amber-300 border border-amber-500/30': lead.status === 'DRY_RUN',
+                    'bg-blue-500/10 text-blue-300 border border-blue-500/30': lead.status === 'SENT',
+                    'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40': lead.status === 'REPLIED',
+                    'bg-purple-500/20 text-purple-300 border border-purple-500/40': lead.status === 'SCHEDULED',
+                    'bg-red-500/10 text-red-400 border border-red-500/30': lead.status === 'OPT_OUT' || lead.status === 'ERROR'
+                  }">
+              {{ lead.status }}
+            </span>
+          </div>
+
+          <!-- Card Body: Name & Source -->
+          <div class="text-xs text-slate-300">
+            <div class="font-semibold text-slate-100">{{ lead.name || 'Contato Sem Nome' }}</div>
+            <div class="text-[10px] text-slate-400">{{ lead.category }} • {{ lead.source_file }}</div>
+          </div>
+
+          <!-- Response Highlight (if any) -->
+          <div v-if="lead.response" class="p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-xs text-emerald-300">
+            <span class="font-bold text-[10px] text-emerald-400 block uppercase">Resposta do Lead:</span>
+            "{{ lead.response }}"
+          </div>
+
+          <!-- Card Footer: Time & One-Click WhatsApp Action -->
+          <div class="flex items-center justify-between pt-2 border-t border-slate-800/60 text-[11px] text-slate-400">
+            <span>{{ lead.sent_at ? formatTime(lead.sent_at) : 'Aguardando envio' }}</span>
+            <a :href="'https://wa.me/' + lead.phone" target="_blank" 
+               class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold flex items-center space-x-1 shadow transition">
+              <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+              <span>Abrir WhatsApp</span>
+            </a>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Pagination (Mobile Friendly) -->
+      <div class="flex items-center justify-between mt-4 pt-3 border-t border-slate-800 text-xs text-slate-400">
+        <div class="text-[11px] sm:text-xs truncate mr-2">{{ totalLeads }} leads</div>
+        <div class="flex items-center space-x-1.5 shrink-0">
+          <button @click="changePage(page - 1)" :disabled="page <= 1"
+                  class="px-2.5 py-1 sm:px-3 sm:py-1 rounded-lg bg-slate-800 disabled:opacity-40 hover:bg-slate-700 text-slate-300 text-xs">
+            Ant.
+          </button>
+          <span class="text-xs px-1">Pág {{ page }}</span>
+          <button @click="changePage(page + 1)" :disabled="leads.length < limit"
+                  class="px-2.5 py-1 sm:px-3 sm:py-1 rounded-lg bg-slate-800 disabled:opacity-40 hover:bg-slate-700 text-slate-300 text-xs">
+            Próx.
+          </button>
+        </div>
+      </div>
+
+    <!-- MODAL DE CONVERSA IA DO LEAD -->
+    <div v-if="isConversationModalOpen" 
+         class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm transition-opacity">
+      <div class="glass border border-slate-700/80 rounded-t-2xl sm:rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col h-[85vh] sm:h-[75vh]">
+        
+        <!-- Header -->
+        <div class="px-4 sm:px-6 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+          <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 rounded-full bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold text-xs">
+              {{ (activeLead?.name || 'L')[0] }}
+            </div>
+            <div>
+              <div class="flex items-center space-x-2">
+                <h3 class="text-xs sm:text-sm font-bold text-white">{{ activeLead?.name || 'Contato Sem Nome' }}</h3>
+                <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-800 font-mono text-slate-300 border border-slate-700">
+                  +{{ activeLead?.phone }}
+                </span>
+              </div>
+              <p class="text-[10px] text-emerald-400 flex items-center space-x-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Hermes SDR IA Ativo</span>
+              </p>
+            </div>
+          </div>
+          <button @click="isConversationModalOpen = false" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <!-- Chat History Messages (Scrollable) -->
+        <div class="flex-1 p-4 overflow-y-auto space-y-3 bg-[#0b141a]/95 text-xs">
+          <div v-if="conversationLoading" class="py-12 text-center text-slate-500">
+            Carregando mensagens da conversa...
+          </div>
+          <div v-else-if="conversationMessages.length === 0" class="py-12 text-center text-slate-500">
+            Nenhuma mensagem registrada nesta conversa ainda.
+          </div>
+
+          <div v-for="m in conversationMessages" :key="m.id" 
+               class="flex flex-col"
+               :class="m.role === 'lead' ? 'items-start' : 'items-end'">
+            
+            <span class="text-[9px] font-semibold text-slate-400 mb-0.5 px-1">
+              {{ m.role === 'lead' ? (activeLead?.name || 'Lead') : 'Hermes SDR (Você)' }}
+            </span>
+
+            <div class="max-w-[85%] rounded-2xl px-3.5 py-2 leading-relaxed shadow-sm"
+                 :class="{
+                   'bg-slate-800 text-slate-100 rounded-tl-sm border border-slate-700/60': m.role === 'lead',
+                   'bg-emerald-700 text-white rounded-tr-sm': m.role === 'outbound' || m.role === 'assistant'
+                 }">
+              {{ m.message }}
+            </div>
+
+            <span class="text-[9px] text-slate-500 mt-0.5 px-1 font-mono">
+              {{ formatTime(m.created_at) }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Modal Footer: Quick Link to WhatsApp -->
+        <div class="px-4 py-3 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
+          <span class="text-[11px] text-slate-400">Quer intervir manualmente?</span>
+          <a :href="'https://wa.me/' + activeLead?.phone" target="_blank"
+             class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs transition flex items-center space-x-1">
+            <i data-lucide="message-circle" class="w-3.5 h-3.5 stroke-[2.5]"></i>
+            <span>Abrir no WhatsApp</span>
+          </a>
+        </div>
+
+      </div>
+    </div>
+
+    </section>
+
+    <!-- MODAL DE DISPARO MANUAL / TESTE SEGURO (Mobile Bottom Sheet / Desktop Modal) -->
+    <div v-if="isManualModalOpen" 
+         class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm transition-opacity">
+      <div class="glass border border-slate-700/80 rounded-t-2xl sm:rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[90vh]">
+        
+        <!-- Modal Header -->
+        <div class="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20 shrink-0">
+              <i data-lucide="send" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+            </div>
+            <div>
+              <h3 class="text-xs sm:text-sm font-bold text-white">Disparo Manual / Teste Seguro</h3>
+              <p class="text-[10px] sm:text-[11px] text-slate-400">Teste sem risco de bloqueio</p>
+            </div>
+          </div>
+          <button @click="isManualModalOpen = false" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <!-- Modal Body (Scrollable) -->
+        <div class="p-4 sm:p-6 space-y-3.5 overflow-y-auto flex-1 text-xs">
+          
+          <!-- Quick Insert Button -->
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-slate-300 font-semibold text-xs">Destinatários:</span>
+            <button @click="insertMyNumber"
+                    class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 text-[11px] font-medium transition flex items-center space-x-1">
+              <i data-lucide="user-check" class="w-3 h-3"></i>
+              <span>+ Meu Número (46 99976-5576)</span>
+            </button>
+          </div>
+
+          <!-- Textarea -->
+          <div>
+            <textarea v-model="manualInputText" rows="3"
+                      class="w-full bg-slate-900/90 border border-slate-700 rounded-xl p-3 text-slate-200 font-mono text-xs focus:outline-none focus:border-emerald-500"
+                      placeholder="Cole contatos (um por linha):&#10;5546999765576, Salesio&#10;46991122334"></textarea>
+            <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+              <span>Formato: <code>telefone, nome</code></span>
+              <span :class="parsedManualContacts.length > 0 ? 'text-emerald-400 font-bold' : 'text-slate-500'">
+                {{ parsedManualContacts.length }} contato(s) válido(s)
+              </span>
+            </div>
+          </div>
+
+          <!-- Template to use -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-semibold text-slate-300">Mensagem:</span>
+              <button @click="updateManualPreview" class="text-emerald-400 hover:underline text-[11px]">Sortear Spintax</button>
+            </div>
+            <textarea v-model="manualTemplate" rows="3"
+                      class="w-full bg-slate-900/90 border border-slate-700 rounded-xl p-2.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-emerald-500"></textarea>
+          </div>
+
+          <!-- Live Preview Box -->
+          <div class="bg-[#0b141a] rounded-xl p-3 border border-slate-800">
+            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Prévia no WhatsApp:</span>
+            <div class="wa-bubble p-2.5 max-w-[95%] text-xs text-white shadow ml-auto">
+              <div class="whitespace-pre-line leading-relaxed">{{ manualPreviewText }}</div>
+            </div>
+          </div>
+
+          <!-- Dispatch Mode Options -->
+          <div class="grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-800">
+            <!-- Mode Toggle -->
+            <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 flex flex-col justify-between">
+              <div class="text-[11px] font-semibold text-white mb-1">Modo de Envio</div>
+              <button type="button" @click="manualDryRun = !manualDryRun"
+                      class="w-full py-1.5 rounded-lg text-xs font-bold border transition text-center"
+                      :class="manualDryRun ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'">
+                {{ manualDryRun ? 'Simulação' : 'WhatsApp Real' }}
+              </button>
+            </div>
+
+            <!-- Immediate Send Option -->
+            <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
+              <div>
+                <div class="font-semibold text-white text-[11px]">Envio Imediato</div>
+                <div class="text-[9px] text-slate-400">Em 3s c/ digitação</div>
+              </div>
+              <input type="checkbox" v-model="manualImmediate" class="w-4 h-4 accent-emerald-500 cursor-pointer">
+            </div>
+          </div>
+
+          <!-- Results Toast / Progress List -->
+          <div v-if="manualResults.length > 0" class="mt-2 p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2">
+            <div class="font-bold text-slate-200 text-xs flex items-center space-x-1.5">
+              <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
+              <span>Resultado ({{ manualResults.length }} processados):</span>
+            </div>
+            <div class="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+              <div v-for="res in manualResults" :key="res.phone"
+                   class="p-2 rounded bg-slate-800/60 border border-slate-700/60 flex items-center justify-between text-[11px]">
+                <div class="min-w-0 mr-2">
+                  <span class="font-mono font-bold text-white">+{{ res.phone }}</span>
+                  <span class="block truncate"
+                        :class="res.status === 'SENT' ? 'text-emerald-400' : (res.status === 'DRY_RUN' ? 'text-amber-400' : 'text-red-400')">
+                    {{ res.details }}
+                  </span>
+                </div>
+                <a :href="'https://wa.me/' + res.phone" target="_blank" class="px-2 py-1 rounded bg-emerald-600 text-slate-950 font-bold shrink-0">
+                  Chat
+                </a>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="px-4 sm:px-6 py-3 border-t border-slate-800 flex items-center justify-between bg-slate-900/80 pb-safe">
+          <button @click="isManualModalOpen = false" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold transition">
+            Fechar
+          </button>
+
+          <button @click="executeManualDispatch" :disabled="parsedManualContacts.length === 0 || manualSending"
+                  class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 text-slate-950 font-bold text-xs tracking-wide shadow-lg transition flex items-center space-x-1.5 active:scale-95">
+            <i data-lucide="send" class="w-3.5 h-3.5 fill-slate-950" :class="{'animate-spin': manualSending}"></i>
+            <span>{{ manualSending ? 'Enviando...' : ('Disparar (' + parsedManualContacts.length + ')') }}</span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    </div>
+    <!-- /VIEW 1: DASHBOARD & CAMPANHAS -->
+
+    <!-- VIEW 2: CHAT AO VIVO EM TEMPO REAL -->
+    <div v-show="currentView === 'livechat'" class="w-full flex-1 flex flex-col min-h-[75vh] sm:min-h-[82vh]">
+      
+      <!-- Top Bar inside Live Chat -->
+      <div class="glass rounded-xl sm:rounded-2xl p-3 sm:p-4 mb-3 sm:mb-4 border border-slate-800 flex items-center justify-between flex-wrap gap-2.5">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 flex items-center justify-center">
+            <i data-lucide="messages-square" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h2 class="text-sm sm:text-base font-bold text-white tracking-tight">Monitoramento em Tempo Real</h2>
+              <span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                <span>SSE Ao Vivo</span>
+              </span>
+            </div>
+            <p class="text-[11px] text-slate-400">Acompanhe as respostas dos leads e o Hermes SDR interagindo em tempo real</p>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <button @click="loadChatConversations" :disabled="loadingConversations"
+                  class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 border border-slate-700 flex items-center space-x-1.5 transition">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loadingConversations}"></i>
+            <span>Atualizar</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Chat Workspace (Split Pane) -->
+      <div class="glass rounded-2xl border border-slate-800 flex-1 flex overflow-hidden shadow-2xl relative min-h-[550px] sm:min-h-[640px]">
+
+        <!-- LEFT COLUMN: CONVERSATION LIST -->
+        <div :class="{'hidden md:flex': activeChatLead, 'flex': !activeChatLead}"
+             class="w-full md:w-80 lg:w-96 border-r border-slate-800 flex flex-col bg-slate-950/60 shrink-0">
+          
+          <!-- Filter Tabs & Search -->
+          <div class="p-3 border-b border-slate-800/80 space-y-2.5">
+            <!-- Filter chips -->
+            <div class="flex items-center space-x-1 overflow-x-auto pb-1 text-[11px] scrollbar-thin">
+              <button @click="chatFilter = 'all'; loadChatConversations()"
+                      :class="chatFilter === 'all' ? 'bg-emerald-500 text-slate-950 font-bold' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700'"
+                      class="px-2.5 py-1 rounded-lg shrink-0 transition">
+                Todos ({{ chatConversations.length }})
+              </button>
+              <button @click="chatFilter = 'replied'; loadChatConversations()"
+                      :class="chatFilter === 'replied' ? 'bg-purple-500 text-white font-bold' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700'"
+                      class="px-2.5 py-1 rounded-lg shrink-0 transition">
+                Respondidos
+              </button>
+              <button @click="chatFilter = 'scheduled'; loadChatConversations()"
+                      :class="chatFilter === 'scheduled' ? 'bg-emerald-500 text-slate-950 font-bold' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700'"
+                      class="px-2.5 py-1 rounded-lg shrink-0 transition">
+                Agendados
+              </button>
+              <button @click="chatFilter = 'human'; loadChatConversations()"
+                      :class="chatFilter === 'human' ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700'"
+                      class="px-2.5 py-1 rounded-lg shrink-0 transition">
+                Manual
+              </button>
+            </div>
+
+            <!-- Search box -->
+            <div class="relative">
+              <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500"></i>
+              <input type="text" v-model="chatSearch" placeholder="Buscar por telefone ou nome..."
+                     class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+            </div>
+          </div>
+
+          <!-- Conversations Scrollable List -->
+          <div class="flex-1 overflow-y-auto divide-y divide-slate-800/50">
+            <div v-if="filteredChatConversations.length === 0" class="p-8 text-center text-slate-500 text-xs">
+              <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+              <p>Nenhuma conversa encontrada neste filtro.</p>
+            </div>
+
+            <div v-for="c in filteredChatConversations" :key="c.id"
+                 @click="selectChat(c)"
+                 :class="activeChatLead && activeChatLead.id === c.id ? 'bg-slate-800/80 border-l-4 border-emerald-500' : 'hover:bg-slate-900/60 border-l-4 border-transparent'"
+                 class="p-3 cursor-pointer transition flex items-start space-x-3">
+              
+              <!-- Avatar -->
+              <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700 flex items-center justify-center font-bold text-xs text-white shrink-0 relative">
+                <span>{{ (c.name || 'L').charAt(0).toUpperCase() }}</span>
+                <span v-if="c.human_takeover === 1" class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400 border-2 border-slate-950" title="Atendimento Humano Ativo"></span>
+                <span v-else-if="c.status === 'SCHEDULED'" class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-purple-400 border-2 border-slate-950" title="Demonstração Agendada"></span>
+                <span v-else-if="c.status === 'REPLIED'" class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-400 border-2 border-slate-950" title="Respondeu"></span>
+              </div>
+
+              <!-- Lead Preview Details -->
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-xs text-slate-200 truncate">{{ c.name || formatPhone(c.phone) }}</span>
+                  <span class="text-[10px] text-slate-500 shrink-0">{{ formatChatTime(c.last_message_at || c.updated_at) }}</span>
+                </div>
+                <p class="text-[11px] text-slate-400 font-mono truncate">+{{ c.phone }}</p>
+                
+                <p class="text-[11px] text-slate-400 truncate mt-0.5" :class="{'text-purple-300 italic': c.last_message && c.last_message.startsWith('🤖')}">
+                  {{ c.last_message || c.last_msg || 'Aguardando início...' }}
+                </p>
+
+                <!-- Tags / Badges -->
+                <div class="flex items-center space-x-1.5 mt-1.5">
+                  <span v-if="c.human_takeover === 1" class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Humano
+                  </span>
+                  <span v-if="c.status === 'SCHEDULED'" class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                    Agendado
+                  </span>
+                  <span v-else-if="c.status === 'REPLIED'" class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    Respondeu
+                  </span>
+                  <span v-if="agentTyping && activeChatLead && activeChatLead.id === c.id" class="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-emerald-500/20 text-emerald-400 animate-pulse">
+                    digitando...
+                  </span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN: CHAT WINDOW -->
+        <div :class="{'flex': activeChatLead, 'hidden md:flex': !activeChatLead}"
+             class="flex-1 flex flex-col bg-slate-900/40 relative">
+          
+          <!-- Empty State (No Chat Selected) -->
+          <div v-if="!activeChatLead" class="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500">
+            <div class="w-16 h-16 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center mb-3 text-slate-400">
+              <i data-lucide="messages-square" class="w-8 h-8"></i>
+            </div>
+            <h3 class="text-sm font-bold text-slate-300 mb-1">Selecione uma conversa</h3>
+            <p class="text-xs text-slate-500 max-w-sm">
+              Clique em qualquer contato da lista ao lado para acompanhar o diálogo do Hermes SDR ou intervir manualmente.
+            </p>
+          </div>
+
+          <!-- Active Chat View -->
+          <template v-else>
+            
+            <!-- Chat Header -->
+            <div class="p-3 sm:p-4 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between flex-wrap gap-2">
+              
+              <div class="flex items-center space-x-2.5">
+                <!-- Back button on Mobile -->
+                <button @click="activeChatLead = null"
+                        class="md:hidden p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">
+                  <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                </button>
+
+                <!-- Avatar -->
+                <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center font-bold text-xs text-emerald-300 shrink-0">
+                  <span>{{ (activeChatLead.name || 'L').charAt(0).toUpperCase() }}</span>
+                </div>
+
+                <!-- Lead Title -->
+                <div>
+                  <div class="flex items-center space-x-2">
+                    <h3 class="text-xs sm:text-sm font-bold text-white">{{ activeChatLead.name || 'Lead sem nome' }}</h3>
+                    <span v-if="activeChatLead.status === 'SCHEDULED'"
+                          class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                      Agendado
+                    </span>
+                    <span v-else-if="activeChatLead.status === 'REPLIED'"
+                          class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                      Respondeu
+                    </span>
+                  </div>
+                  <div class="flex items-center space-x-2 text-[11px] text-slate-400 font-mono">
+                    <span>+{{ activeChatLead.phone }}</span>
+                    <span v-if="activeChatLead.niche" class="text-slate-500 font-sans">• {{ activeChatLead.niche }}</span>
+                    <span v-if="activeChatLead.city" class="text-slate-500 font-sans">• {{ activeChatLead.city }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Action Controls in Header -->
+              <div class="flex items-center space-x-2">
+                
+                <!-- Human Takeover Button -->
+                <button @click="toggleLeadTakeover"
+                        :class="activeChatLead.human_takeover === 1 
+                                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30' 
+                                : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'"
+                        class="px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center space-x-1.5 transition shadow-sm">
+                  <i :data-lucide="activeChatLead.human_takeover === 1 ? 'user-check' : 'bot'" class="w-3.5 h-3.5"></i>
+                  <span class="hidden sm:inline">
+                    {{ activeChatLead.human_takeover === 1 ? 'Atendimento Manual Ativo' : 'Hermes Automático' }}
+                  </span>
+                  <span class="sm:hidden">
+                    {{ activeChatLead.human_takeover === 1 ? 'Manual' : 'Auto' }}
+                  </span>
+                </button>
+
+                <!-- Open in WhatsApp -->
+                <a :href="'https://wa.me/' + activeChatLead.phone" target="_blank"
+                   class="px-2.5 py-1.5 rounded-lg bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-600/30 text-xs font-semibold flex items-center space-x-1 transition">
+                  <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                  <span class="hidden sm:inline">WhatsApp</span>
+                </a>
+
+              </div>
+
+            </div>
+
+            <!-- Takeover Banner Info -->
+            <div v-if="activeChatLead.human_takeover === 1"
+                 class="px-4 py-2 bg-amber-950/40 border-b border-amber-500/30 flex items-center justify-between text-xs text-amber-300">
+              <div class="flex items-center space-x-2">
+                <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400 shrink-0"></i>
+                <span>Você assumiu este atendimento. O Hermes SDR está em pausa para este lead.</span>
+              </div>
+              <button @click="toggleLeadTakeover" class="underline text-amber-200 hover:text-white font-bold ml-2 shrink-0">
+                Devolver ao Hermes
+              </button>
+            </div>
+
+            <!-- Message Stream Box -->
+            <div ref="chatContainer" class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5 scrollbar-thin">
+              
+              <div v-if="chatMessagesLoading" class="py-12 text-center text-slate-500 text-xs flex flex-col items-center justify-center">
+                <i data-lucide="loader-2" class="w-6 h-6 animate-spin text-emerald-400 mb-2"></i>
+                <span>Carregando histórico do diálogo...</span>
+              </div>
+
+              <div v-else-if="activeChatMessages.length === 0" class="py-12 text-center text-slate-500 text-xs">
+                <i data-lucide="message-square" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+                <p>Nenhuma mensagem trocada ainda com este lead.</p>
+              </div>
+
+              <!-- Messages List -->
+              <template v-else>
+                <div v-for="m in activeChatMessages" :key="m.id"
+                     :class="m.role === 'lead' ? 'justify-start' : 'justify-end'"
+                     class="flex w-full">
+                  
+                  <div :class="m.role === 'lead' 
+                               ? 'bg-slate-800 text-slate-100 rounded-2xl rounded-tl-sm border border-slate-700/60' 
+                               : (m.role === 'human' 
+                                  ? 'bg-amber-950/70 border border-amber-500/40 text-amber-100 rounded-2xl rounded-tr-sm' 
+                                  : 'bg-gradient-to-br from-emerald-950/80 to-slate-900 border border-emerald-500/30 text-emerald-100 rounded-2xl rounded-tr-sm')"
+                       class="max-w-[85%] sm:max-w-[70%] p-3.5 shadow-md space-y-1">
+                    
+                    <!-- Message Header -->
+                    <div class="flex items-center justify-between text-[10px] space-x-2 font-semibold opacity-75">
+                      <span v-if="m.role === 'lead'" class="text-slate-300 flex items-center space-x-1">
+                        <i data-lucide="user" class="w-3 h-3"></i>
+                        <span>{{ activeChatLead.name || 'Lead' }}</span>
+                      </span>
+                      <span v-else-if="m.role === 'human'" class="text-amber-300 flex items-center space-x-1">
+                        <i data-lucide="user-check" class="w-3 h-3"></i>
+                        <span>Salesio Ninja (Humano)</span>
+                      </span>
+                      <span v-else class="text-emerald-400 flex items-center space-x-1">
+                        <i data-lucide="bot" class="w-3 h-3"></i>
+                        <span>Hermes SDR (IA)</span>
+                      </span>
+                      <span class="text-slate-400 font-mono">{{ formatMessageTime(m.created_at) }}</span>
+                    </div>
+
+                    <!-- Content Text -->
+                    <div class="text-xs sm:text-sm whitespace-pre-wrap leading-relaxed">
+                      {{ m.content || m.message }}
+                    </div>
+
+                  </div>
+
+                </div>
+
+                <!-- Typing Indicator Bubble -->
+                <div v-if="agentTyping" class="flex justify-start w-full">
+                  <div class="bg-slate-800/80 border border-slate-700 text-slate-300 rounded-2xl rounded-tl-sm p-3 shadow-md flex items-center space-x-2 text-xs">
+                    <div class="flex space-x-1">
+                      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-bounce"></span>
+                      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-bounce [animation-delay:0.2s]"></span>
+                      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-bounce [animation-delay:0.4s]"></span>
+                    </div>
+                    <span class="text-[11px] text-slate-400">Hermes SDR está digitando a resposta...</span>
+                  </div>
+                </div>
+
+              </template>
+
+            </div>
+
+            <!-- Quick Suggestion Chips -->
+            <div class="px-3 sm:px-4 py-1.5 bg-slate-950/60 border-t border-slate-800/60 flex items-center space-x-1.5 overflow-x-auto scrollbar-thin">
+              <span class="text-[10px] text-slate-500 font-bold shrink-0">Respostas rápidas:</span>
+              <button @click="humanInputText = 'Olá! Sou o Salesio Ninja. Em que posso te ajudar?'"
+                      class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700 shrink-0 transition">
+                Olá! Sou o Salesio...
+              </button>
+              <button @click="humanInputText = 'Perfeito! Qual seria o melhor horário para conversarmos amanhã?'"
+                      class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700 shrink-0 transition">
+                Qual melhor horário?
+              </button>
+              <button @click="humanInputText = 'Vou te enviar o link para nosso encontro de 10 minutinhos.'"
+                      class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700 shrink-0 transition">
+                Enviar link do encontro
+              </button>
+            </div>
+
+            <!-- Chat Input Bar -->
+            <div class="p-3 sm:p-4 border-t border-slate-800 bg-slate-950/90 pb-safe">
+              <form @submit.prevent="sendHumanMessage" class="flex items-center space-x-2">
+                <input type="text" v-model="humanInputText"
+                       placeholder="Digite sua mensagem para intervir no WhatsApp deste lead..."
+                       :disabled="sendingHuman"
+                       class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+                
+                <button type="submit" :disabled="!humanInputText.trim() || sendingHuman"
+                        class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 text-slate-950 font-bold text-xs shadow-lg transition flex items-center space-x-1.5 shrink-0 active:scale-95">
+                  <i data-lucide="send" class="w-4 h-4 fill-slate-950" :class="{'animate-spin': sendingHuman}"></i>
+                  <span class="hidden sm:inline">{{ sendingHuman ? 'Enviando...' : 'Enviar' }}</span>
+                </button>
+              </form>
+              <div class="flex items-center justify-between text-[10px] text-slate-500 mt-1.5 px-1">
+                <span>Pressione Enter para enviar</span>
+                <span v-if="activeChatLead.human_takeover === 1" class="text-amber-400 font-semibold">
+                  ● Modo Humano ativo
+                </span>
+                <span v-else class="text-emerald-400 font-semibold">
+                  ● Hermes SDR ativo (envio manual ativará modo humano)
+                </span>
+              </div>
+            </div>
+
+          </template>
+
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <!-- STICKY MOBILE BOTTOM BAR (Visible only on mobile) -->
+  <div class="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0c121e]/95 border-t border-slate-800 p-2.5 backdrop-blur-md pb-safe flex items-center justify-around gap-2 shadow-2xl">
+    <!-- Play/Pause Quick Button -->
+    <button v-if="stats.global_status !== 'RUNNING'"
+            @click="controlAction('start')"
+            class="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 shadow">
+      <i data-lucide="play" class="w-3.5 h-3.5 fill-slate-950"></i>
+      <span>INICIAR</span>
+    </button>
+    <button v-else
+            @click="controlAction('pause')"
+            class="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold text-xs flex items-center justify-center space-x-1.5 shadow animate-pulse">
+      <i data-lucide="pause" class="w-3.5 h-3.5 fill-slate-950"></i>
+      <span>PAUSAR</span>
+    </button>
+
+    <!-- Switch View Button -->
+    <button @click="currentView === 'dashboard' ? openLiveChatView() : currentView = 'dashboard'"
+            class="py-2.5 px-3 rounded-xl bg-slate-800 border border-slate-700 font-bold text-xs flex items-center space-x-1 transition relative"
+            :class="currentView === 'livechat' ? 'text-emerald-400 border-emerald-500/50' : 'text-slate-300'">
+      <i :data-lucide="currentView === 'dashboard' ? 'message-square' : 'layout-dashboard'" class="w-3.5 h-3.5"></i>
+      <span>{{ currentView === 'dashboard' ? 'Chat Vivo' : 'Painel' }}</span>
+      <span v-if="currentView === 'dashboard' && (stats.total_scheduled || 0) + (stats.total_replies || 0) > 0" 
+            class="w-2 h-2 rounded-full bg-purple-500 animate-pulse absolute -top-1 -right-1"></span>
+    </button>
+
+    <!-- Test Button -->
+    <button @click="openManualModal"
+            class="py-2.5 px-3 rounded-xl bg-slate-800 border border-slate-700 text-emerald-400 font-bold text-xs flex items-center space-x-1">
+      <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+      <span>Teste</span>
+    </button>
+
+    <!-- WhatsApp Chat -->
+    <a href="https://wa.me/5546999765576" target="_blank"
+       class="py-2.5 px-3 rounded-xl bg-emerald-600 text-slate-950 font-bold text-xs flex items-center space-x-1">
+      <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
+      <span>WhatsApp</span>
+    </a>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="border-t border-slate-800/80 bg-[#0c121e] py-4 text-center text-xs text-slate-500 hidden sm:block">
+    <p>Hermes AI Agent • Sistema de Prospecção Ativa & Agendamento Integrado ao Google Calendar • Salesio Ninja</p>
+  </footer>
+
+</div>
+
+<script>
+  const { createApp } = Vue;
+
+  createApp({
+    data() {
+      return {
+        stats: {},
+        campaigns: [],
+        leads: [],
+        totalLeads: 0,
+        page: 1,
+        limit: 30,
+        filterStatus: 'all',
+        searchQuery: '',
+        syncing: false,
+        testingAi: false,
+        previewText: 'Carregando preview...',
+        mobileTab: 'campaigns', // 'campaigns' or 'copywriter'
+        isDesktop: window.innerWidth >= 1024,
+        isManualModalOpen: false,
+        isConversationModalOpen: false,
+        currentView: 'dashboard',
+        chatConversations: [],
+        loadingConversations: false,
+        chatSearch: '',
+        chatFilter: 'all',
+        activeChatLead: null,
+        activeChatMessages: [],
+        chatMessagesLoading: false,
+        humanInputText: '',
+        sendingHuman: false,
+        agentTyping: false,
+        eventSource: null,
+        activeLead: null,
+        conversationMessages: [],
+        conversationLoading: false,
+        manualInputText: '',
+        manualTemplate: '',
+        manualPreviewText: 'Carregando preview...',
+        manualDryRun: false,
+        manualImmediate: true,
+        manualSending: false,
+        manualResults: [],
+        settings: {
+          daily_limit: 35,
+          min_delay: 60,
+          max_delay: 180,
+          dry_run: true,
+          active_campaign: 'lotes_educacao',
+          message_template: ''
+        }
+      };
+    },
+    computed: {
+      filteredChatConversations() {
+        let list = this.chatConversations || [];
+        if (this.chatFilter === 'replied') {
+          list = list.filter(c => c.status === 'REPLIED' || (c.reply_count && c.reply_count > 0));
+        } else if (this.chatFilter === 'scheduled') {
+          list = list.filter(c => c.status === 'SCHEDULED');
+        } else if (this.chatFilter === 'human') {
+          list = list.filter(c => c.human_takeover === 1);
+        }
+        if (this.chatSearch && this.chatSearch.trim()) {
+          const q = this.chatSearch.toLowerCase().trim();
+          list = list.filter(c => (c.name && c.name.toLowerCase().includes(q)) || (c.phone && c.phone.includes(q)));
+        }
+        return list;
+      },
+      parsedManualContacts() {
+        if (!this.manualInputText) return [];
+        const lines = this.manualInputText.trim().split('\n');
+        const list = [];
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          const parts = trimmed.includes(';') ? trimmed.split(';') : trimmed.split(',');
+          let digits = parts[0].replace(/\D/g, '');
+          if ((digits.length === 10 || digits.length === 11) && !digits.startsWith('55')) {
+            digits = '55' + digits;
+          }
+          if (digits.length >= 12 && digits.length <= 14) {
+            list.push({ phone: digits, name: parts.length > 1 ? parts[1].trim() : '' });
+          }
+        }
+        return list;
+      }
+    },
+    mounted() {
+      window.addEventListener('resize', () => {
+        this.isDesktop = window.innerWidth >= 1024;
+      });
+      this.fetchStats();
+      this.fetchCampaigns();
+      this.fetchLeads();
+      this.initLiveStream();
+      if (window.location.hash === '#chat') {
+        this.openLiveChatView();
+      }
+      setInterval(() => {
+        this.fetchStats();
+        if (this.currentView === 'livechat' && !this.loadingConversations) {
+          this.loadChatConversations();
+        }
+      }, 5000);
+      this.$nextTick(() => {
+        lucide.createIcons();
+      });
+    },
+    methods: {
+      async fetchStats() {
+        try {
+          const res = await fetch('/painel/api/stats');
+          if (res.ok) {
+            this.stats = await res.json();
+            this.settings.daily_limit = this.stats.daily_limit;
+            this.settings.min_delay = this.stats.min_delay;
+            this.settings.max_delay = this.stats.max_delay;
+            this.settings.dry_run = this.stats.dry_run;
+            this.settings.active_campaign = this.stats.active_campaign;
+            this.$nextTick(() => lucide.createIcons());
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      },
+      async fetchCampaigns() {
+        try {
+          const res = await fetch('/painel/api/campaigns');
+          if (res.ok) {
+            this.campaigns = await res.json();
+            const active = this.campaigns.find(c => c.slug === this.settings.active_campaign);
+            if (active && !this.settings.message_template) {
+              this.settings.message_template = active.template;
+              this.updatePreview();
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      },
+      async fetchLeads() {
+        try {
+          const params = new URLSearchParams({
+            campaign_slug: this.settings.active_campaign || 'all',
+            status: this.filterStatus,
+            search: this.searchQuery,
+            page: this.page,
+            limit: this.limit
+          });
+          const res = await fetch('/painel/api/leads?' + params);
+          if (res.ok) {
+            const data = await res.json();
+            this.leads = data.leads;
+            this.totalLeads = data.total;
+            this.$nextTick(() => lucide.createIcons());
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      },
+      async controlAction(action) {
+        try {
+          await fetch('/painel/api/control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, campaign_slug: this.settings.active_campaign })
+          });
+          await this.fetchStats();
+          await this.fetchLeads();
+        } catch (e) {
+          console.error(e);
+        }
+      },
+      async saveSettings() {
+        try {
+          await fetch('/painel/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(this.settings)
+          });
+          this.updatePreview();
+          await this.fetchStats();
+        } catch (e) {
+          console.error(e);
+        }
+      },
+      selectCampaign(camp) {
+        this.settings.active_campaign = camp.slug;
+        this.settings.message_template = camp.template;
+        this.saveSettings();
+        this.fetchLeads();
+      },
+      async syncLeads() {
+        this.syncing = true;
+        await this.controlAction('sync_leads');
+        await this.fetchCampaigns();
+        await this.fetchLeads();
+        this.syncing = false;
+      },
+      async testAiVariations() {
+        this.testingAi = true;
+        try {
+          const res = await fetch('/painel/api/preview-ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ template: this.settings.message_template })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.variations && data.variations.length > 0) {
+              this.previewText = data.variations[0];
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+        this.testingAi = false;
+      },
+      updatePreview() {
+        if (!this.settings.message_template) return;
+        this.testAiVariations();
+      },
+      formatTime(iso) {
+        if (!iso) return '-';
+        const d = new Date(iso);
+        return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      },
+      changePage(p) {
+        this.page = p;
+        this.fetchLeads();
+      },
+      async openConversationModal(lead) {
+      this.activeLead = lead;
+      this.isConversationModalOpen = true;
+      this.conversationLoading = true;
+      this.conversationMessages = [];
+      try {
+        const res = await fetch(`/painel/api/lead-conversation/${lead.id}`).then(r => r.json());
+        this.conversationMessages = res.messages || [];
+      } catch (e) {
+        console.error('Erro ao carregar conversa:', e);
+      } finally {
+        this.conversationLoading = false;
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+      }
+    },
+    openManualModal() {
+        this.isManualModalOpen = true;
+        this.manualResults = [];
+        if (!this.manualTemplate) {
+          this.manualTemplate = this.settings.message_template || "{Olá|Oi}{nome}, tudo bem? Aqui é o Salesio Ninja. Estou validando nosso sistema de automação.";
+        }
+        this.updateManualPreview();
+        this.$nextTick(() => lucide.createIcons());
+      },
+      insertMyNumber() {
+        if (!this.manualInputText.includes('5546999765576')) {
+          this.manualInputText = (this.manualInputText ? this.manualInputText.trim() + '\n' : '') + '5546999765576, Salesio Ninja';
+        }
+        this.updateManualPreview();
+      },
+      async updateManualPreview() {
+        try {
+          const res = await fetch('/painel/api/preview-ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ template: this.manualTemplate, lead_name: 'Salesio Ninja', lead_phone: '5546999765576' })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.variations && data.variations.length > 0) {
+              this.manualPreviewText = data.variations[0];
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      },
+      async executeManualDispatch() {
+        if (this.parsedManualContacts.length === 0) return;
+        this.manualSending = true;
+        try {
+          const res = await fetch('/painel/api/manual-dispatch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              raw_text: this.manualInputText,
+              template: this.manualTemplate,
+              immediate: this.manualImmediate,
+              dry_run: this.manualDryRun
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            this.manualResults = data.results || [];
+            await this.fetchStats();
+            await this.fetchLeads();
+            this.$nextTick(() => lucide.createIcons());
+          } else {
+            const err = await res.json();
+            alert('Erro no disparo: ' + (err.detail || 'Falha ao processar'));
+          }
+        } catch (e) {
+          alert('Erro de conexão: ' + e.message);
+        }
+        this.manualSending = false;
+      },
+      openLiveChatView() {
+        this.currentView = 'livechat';
+        this.loadChatConversations();
+        this.initLiveStream();
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+      },
+      async syncActiveMessages(leadId) {
+        if (!leadId) return;
+        try {
+          const res = await fetch('/painel/api/chat/messages/' + leadId).then(r => r.json());
+          if (res.messages && this.activeChatLead && this.activeChatLead.id === leadId) {
+            if (res.messages.length !== this.activeChatMessages.length) {
+              this.activeChatMessages = res.messages;
+              this.scrollToBottom();
+            }
+          }
+        } catch (e) {}
+      },
+      async loadChatConversations() {
+        this.loadingConversations = true;
+        try {
+          const res = await fetch('/painel/api/chat/conversations?filter=' + this.chatFilter).then(r => r.json());
+          this.chatConversations = res.conversations || [];
+          if (this.activeChatLead) {
+            const found = this.chatConversations.find(c => c.id === this.activeChatLead.id);
+            if (found) {
+              this.activeChatLead = { ...this.activeChatLead, ...found };
+            }
+            this.syncActiveMessages(this.activeChatLead.id);
+          }
+        } catch (e) {
+          console.error('Erro ao carregar conversas do chat:', e);
+        } finally {
+          this.loadingConversations = false;
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        }
+      },
+      async selectChat(c) {
+        this.activeChatLead = c;
+        this.chatMessagesLoading = true;
+        this.activeChatMessages = [];
+        try {
+          const res = await fetch('/painel/api/chat/messages/' + c.id).then(r => r.json());
+          this.activeChatMessages = res.messages || [];
+          this.scrollToBottom();
+        } catch (e) {
+          console.error('Erro ao carregar mensagens:', e);
+        } finally {
+          this.chatMessagesLoading = false;
+          this.$nextTick(() => {
+            if (window.lucide) lucide.createIcons();
+            this.scrollToBottom();
+          });
+        }
+      },
+      scrollToBottom() {
+        this.$nextTick(() => {
+          const container = this.$refs.chatContainer;
+          if (container) {
+            container.scrollTop = container.scrollHeight;
+          }
+        });
+      },
+      async sendHumanMessage() {
+        if (!this.humanInputText.trim() || !this.activeChatLead || this.sendingHuman) return;
+        const text = this.humanInputText.trim();
+        this.sendingHuman = true;
+        try {
+          const res = await fetch('/painel/api/chat/send-human', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              lead_id: this.activeChatLead.id,
+              message: text
+            })
+          });
+          if (res.ok) {
+            this.humanInputText = '';
+            this.activeChatLead.human_takeover = 1;
+            const msgData = await res.json();
+            if (msgData.message) {
+              this.activeChatMessages.push(msgData.message);
+            } else {
+              this.activeChatMessages.push({
+                id: Date.now(),
+                role: 'human',
+                content: text,
+                created_at: new Date().toISOString()
+              });
+            }
+            this.scrollToBottom();
+            this.loadChatConversations();
+          } else {
+            const err = await res.json();
+            alert('Erro ao enviar mensagem: ' + (err.detail || 'Falha no WhatsApp'));
+          }
+        } catch (e) {
+          alert('Erro de conexão ao enviar: ' + e.message);
+        } finally {
+          this.sendingHuman = false;
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        }
+      },
+      async toggleLeadTakeover() {
+        if (!this.activeChatLead) return;
+        const newStatus = this.activeChatLead.human_takeover === 1 ? 0 : 1;
+        try {
+          const res = await fetch('/painel/api/chat/toggle-takeover', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              lead_id: this.activeChatLead.id,
+              takeover: newStatus === 1
+            })
+          });
+          if (res.ok) {
+            this.activeChatLead.human_takeover = newStatus;
+            this.loadChatConversations();
+          }
+        } catch (e) {
+          console.error('Erro ao alternar modo de atendimento:', e);
+        }
+      },
+      formatChatTime(iso) {
+        if (!iso) return '';
+        try {
+          const d = new Date(iso);
+          const now = new Date();
+          if (d.toDateString() === now.toDateString()) {
+            return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+          }
+          return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        } catch (e) {
+          return '';
+        }
+      },
+      formatMessageTime(iso) {
+        if (!iso) return '';
+        try {
+          const d = new Date(iso);
+          return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        } catch (e) {
+          return '';
+        }
+      },
+      formatPhone(phone) {
+        if (!phone) return '';
+        const p = String(phone);
+        if (p.length === 13 && p.startsWith('55')) {
+          return '(' + p.slice(2,4) + ') ' + p.slice(4,9) + '-' + p.slice(9);
+        }
+        if (p.length === 12 && p.startsWith('55')) {
+          return '(' + p.slice(2,4) + ') ' + p.slice(4,8) + '-' + p.slice(8);
+        }
+        return p;
+      },
+      initLiveStream() {
+        if (this.eventSource) return;
+        try {
+          this.eventSource = new EventSource('/painel/api/chat/stream');
+          
+          const handleIncoming = (data) => {
+            if (!data) return;
+            const leadId = String(data.lead_id || '');
+            const msgContent = data.content || data.message || '';
+            const msgRole = data.role || 'lead';
+            if (this.activeChatLead && String(this.activeChatLead.id) === leadId) {
+              const lastMsg = this.activeChatMessages[this.activeChatMessages.length - 1];
+              if (!lastMsg || lastMsg.content !== msgContent || lastMsg.role !== msgRole) {
+                this.activeChatMessages.push({
+                  id: Date.now(),
+                  role: msgRole,
+                  content: msgContent,
+                  message: msgContent,
+                  created_at: data.created_at || new Date().toISOString()
+                });
+                this.scrollToBottom();
+              }
+            }
+            this.loadChatConversations();
+          };
+
+          this.eventSource.addEventListener('new_message', (e) => {
+            try {
+              const data = JSON.parse(e.data);
+              handleIncoming(data);
+            } catch (err) {
+              console.error('SSE new_message parse error:', err);
+            }
+          });
+
+          this.eventSource.onmessage = (e) => {
+            try {
+              const parsed = JSON.parse(e.data);
+              if (parsed.type === 'new_message' && parsed.data) {
+                handleIncoming(parsed.data);
+              } else if (parsed.content || parsed.message) {
+                handleIncoming(parsed);
+              }
+            } catch (err) {}
+          };
+
+          this.eventSource.addEventListener('typing_status', (e) => {
+            try {
+              const data = JSON.parse(e.data);
+              if (this.activeChatLead && String(this.activeChatLead.id) === String(data.lead_id)) {
+                this.agentTyping = (data.status === 'typing');
+                if (this.agentTyping) this.scrollToBottom();
+              }
+            } catch (err) {
+              console.error('SSE typing_status parse error:', err);
+            }
+          });
+
+          this.eventSource.addEventListener('lead_status_update', (e) => {
+            try {
+              const data = JSON.parse(e.data);
+              if (this.activeChatLead && String(this.activeChatLead.id) === String(data.lead_id)) {
+                this.activeChatLead.status = data.status;
+              }
+              this.loadChatConversations();
+            } catch (err) {
+              console.error('SSE lead_status_update parse error:', err);
+            }
+          });
+
+          this.eventSource.addEventListener('takeover_updated', (e) => {
+            try {
+              const data = JSON.parse(e.data);
+              if (this.activeChatLead && String(this.activeChatLead.id) === String(data.lead_id)) {
+                this.activeChatLead.human_takeover = data.human_takeover ? 1 : 0;
+              }
+              this.loadChatConversations();
+            } catch (err) {
+              console.error('SSE takeover_updated parse error:', err);
+            }
+          });
+
+          this.eventSource.onerror = (e) => {
+            console.warn('SSE stream desconectado, tentando reconectar...');
+          };
+        } catch (err) {
+          console.error('Falha ao inicializar EventSource:', err);
+        }
+      }
+    }
+  }).mount('#app');
+</script>
+</body>
+</html>

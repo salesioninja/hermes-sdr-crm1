@@ -1,0 +1,35 @@
+{
+  "safety_guardrails": {
+    "dry_run_mode": {
+      "default_state": true,
+      "description": "Nenhum envio real é realizado enquanto esta trava estiver ativa. As mensagens são apenas simuladas e gravadas em relatório.",
+      "unlock_requires": "Autorização explícita com token pelo proprietário."
+    },
+    "pacing_limits": {
+      "daily_max_messages_personal_chip": 40,
+      "daily_max_messages_warmed_chip": 150,
+      "min_delay_between_messages_seconds": 65,
+      "max_delay_between_messages_seconds": 180,
+      "typing_presence_duration_seconds_min": 4,
+      "typing_presence_duration_seconds_max": 8
+    },
+    "operating_window": {
+      "timezone": "America/Sao_Paulo",
+      "allowed_days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+      "allowed_hours_start": "09:30",
+      "allowed_hours_end": "17:30",
+      "weekend_send_allowed": false
+    },
+    "blacklist_rules": {
+      "auto_add_on_negative_response": true,
+      "storage_file": "/opt/hermes-agent/data/downloads/blacklist_contatos.json",
+      "never_contact_twice_within_days": 30
+    },
+    "owner_alerts": {
+      "owner_jid": "554699765576@s.whatsapp.net",
+      "notify_on_hot_lead": true,
+      "notify_on_daily_cap_reached": true,
+      "notify_on_error": true
+    }
+  }
+}

@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  hermes_sdr:
+    image: ghcr.io/salesioninja/hermes-sdr:latest
+    container_name: hermes_sdr
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=openai/gpt-4o-mini
+      - WHATSAPP_BRIDGE_URL=http://hermes:3000
+      - OWNER_PHONE=5546999765576
+      - HERMES_DATA_DIR=/opt/data
+    volumes:
+      - ./data:/opt/data
+    networks:
+      - hermes_net
+
+networks:
+  hermes_net:
+    driver: overlay

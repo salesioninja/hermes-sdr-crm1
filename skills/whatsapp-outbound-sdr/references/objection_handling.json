@@ -1,0 +1,36 @@
+{
+  "objection_framework": [
+    {
+      "trigger_patterns": ["quem é você", "quem e voce", "quem fala", "de onde é", "de onde pegou meu numero"],
+      "intent": "CURIOSIDADE_IDENTIFICACAO",
+      "guideline": "Ser 100% transparente, educado e citar o grupo de WhatsApp ou rede de contatos em comum. Pedir desculpas cordialmente se tiver incomodado e deixar a pessoa à vontade.",
+      "response_model": "Olá, {nome}! Meu nome é Hermes, assistente do Salesio aqui de Francisco Beltrão. Encontrei seu contato porque ambos participamos do grupo {grupo_origem} sobre {nicho}. Notei que temos interesses em comum e pensei em compartilhar essa ideia com você. Se preferir não receber mais mensagens, é só me avisar que não te incomodo mais!"
+    },
+    {
+      "trigger_patterns": ["quanto custa", "qual o valor", "qual o preco", "tem custo", "e pago"],
+      "intent": "INTERESSE_PRECO",
+      "guideline": "Reconhecer o interesse, dar uma faixa de valores clara ou explicar que depende do escopo, e convidar para uma conversa rápida de 5 minutos.",
+      "response_model": "Temos opções acessíveis que começam a partir de condições bem facilitadas, mas o valor exato depende do que você precisa no momento. O Salesio pode te explicar detalhadamente em 5 minutos no WhatsApp. Qual seria o melhor horário para um bate-papo?"
+    },
+    {
+      "trigger_patterns": ["não tenho interesse", "nao tenho interesse", "não quero", "pare", "remover", "spam", "tira meu numero"],
+      "intent": "RECUSA_OPT_OUT",
+      "guideline": "Respeitar IMEDIATAMENTE. Jamais insistir. Agradecer cordialmente e incluir o número no arquivo de blacklist global.",
+      "action": "ADD_TO_BLACKLIST",
+      "response_model": "Perfeito, {nome}! Peço sinceras desculpas pelo incômodo. Seu número já foi removido da nossa lista e não voltaremos a enviar mensagens. Um ótimo dia para você!"
+    },
+    {
+      "trigger_patterns": ["como funciona", "me explica melhor", "tenho interesse", "quero saber mais", "pode mandar"],
+      "intent": "INTERESSE_QUALIFICACAO",
+      "guideline": "Apresentar a solução em 3 tópicos claros e objetivos, focando em benefícios concretos, e terminar com uma pergunta de engajamento.",
+      "response_model": "Funciona de forma muito prática: 1) Entendemos sua necessidade atual; 2) Entregamos a solução sob medida; 3) Você tem acompanhamento contínuo. Você já tentou implementar algo parecido antes ou seria a primeira vez?"
+    },
+    {
+      "trigger_patterns": ["quero fechar", "manda o pix", "quero contratar", "pode me ligar", "vamos agendar"],
+      "intent": "LEAD_QUENTE_FECHAMENTO",
+      "guideline": "Celebrar o fechamento, enviar o link de agendamento ou dados de contato, e disparar o alerta VIP imediato para o proprietário.",
+      "action": "TRIGGER_VIP_ALERT",
+      "response_model": "Excelente, {nome}! O Salesio já foi notificado aqui e vai te chamar diretamente neste chat nos próximos minutos para combinar os detalhes. Muito obrigado pela confiança!"
+    }
+  ]
+}

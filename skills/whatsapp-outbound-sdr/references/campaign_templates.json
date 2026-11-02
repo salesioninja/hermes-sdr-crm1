@@ -1,0 +1,44 @@
+{
+  "templates_by_niche": {
+    "educacao_professores": {
+      "context": "Professores, coordenadores e gestores escolares da rede pública e privada do Paraná e Brasil.",
+      "value_proposition": "Capacitações práticas alinhadas à BNCC, materiais didáticos prontos, especializações e mentorias pedagógicas.",
+      "angles": [
+        "Apoio ao planejamento de aulas e economia de tempo",
+        "Novas tecnologias em sala de aula (IA e Metodologias Ativas)",
+        "Oportunidades de progressão de carreira, PSS e concursos"
+      ],
+      "tone": "Colegial, respeitoso, colaborativo e empático com a rotina docente."
+    },
+    "tecnologia_devs": {
+      "context": "Programadores, desenvolvedores de software, profissionais de TI e engenheiros.",
+      "value_proposition": "Automação com n8n/APIs, desenvolvimento de agentes autônomos, soluções fullstack e parcerias em projetos.",
+      "angles": [
+        "Compartilhamento de arquitetura de microsserviços e automações",
+        "Networking regional e nacional de desenvolvimento",
+        "Oportunidades de projetos freelancer e contratos B2B"
+      ],
+      "tone": "Direto, técnico, pragmático e sem enrolação."
+    },
+    "regional_parana_negocios": {
+      "context": "Empresários, profissionais liberais e cidadãos do Sudoeste e Oeste do Paraná (Beltrão, Pato Branco, Cascavel).",
+      "value_proposition": "Serviços locais, soluções empresariais, tecnologia aplicada a empresas regionais e networking de confiança.",
+      "angles": [
+        "Parceria comercial e prestação de serviços regional",
+        "Indicações e fortalecimento do comércio do Sudoeste/Oeste",
+        "Soluções de economia e produtividade local"
+      ],
+      "tone": "Caloroso, regional, focado em confiança e proximidade geográfica."
+    },
+    "agenda_pessoal_networking": {
+      "context": "Contatos já salvos na agenda do celular (clientes antigos, conhecidos, parceiros de longa data).",
+      "value_proposition": "Retomada de contato, atualização profissional e oferta de novas soluções com condições exclusivas.",
+      "angles": [
+        "Cumprimento pessoal e atualização de projetos recentes",
+        "Apresentação de novidades da consultoria/empresa",
+        "Oferta de teste ou consultoria gratuita de cortesia"
+      ],
+      "tone": "Altamente pessoal, intimista, amigável e atencioso."
+    }
+  }
+}

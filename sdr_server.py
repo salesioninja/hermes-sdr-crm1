@@ -58,7 +58,7 @@ for env_candidate in [os.path.join(DATA_DIR, ".env"), os.path.join(os.getcwd(), 
         except Exception:
             pass
 
-BRIDGE_URL = os.environ.get("WHATSAPP_BRIDGE_URL", "http://127.0.0.1:3000")
+BRIDGE_URL = os.environ.get("WHATSAPP_BRIDGE_URL", "http://hermes:3000")
 OWNER_PHONE = os.environ.get("OWNER_PHONE", "5546999765576")
 
 app = FastAPI(title="Hermes Outbound SDR Engine", docs_url="/painel/docs", openapi_url="/painel/openapi.json")
@@ -1365,7 +1365,13 @@ async def process_lead_inbound_response(lead: dict, incoming_text: str, target_c
     target_jid = target_chat_id if ("@" in target_chat_id) else f"{phone}@s.whatsapp.net"
 
     # 1. OPT-OUT CHECK
-    if any(w in lower for w in ("não quero", "nao quero", "pare", "remover", "spam", "stop", "bloquear", "nao tenho interesse", "não tenho interesse", "retire meu", "cancela", "cancelar")):
+    OPT_OUT_KEYWORDS = (
+        "não quero", "nao quero", "pare", "remover", "spam", "stop", "bloquear",
+        "nao tenho interesse", "não tenho interesse", "retire meu", "cancela", "cancelar",
+        "não obrigado", "nao obrigado", "não, obrigado", "nao precisa", "não precisa",
+        "número errado", "numero errado", "engano", "errou o número", "errou o numero"
+    )
+    if any(w in lower for w in OPT_OUT_KEYWORDS):
         with get_db() as conn:
             conn.execute("UPDATE leads SET status = 'OPT_OUT', response = ?, response_at = ? WHERE id = ?", (incoming_text, now_iso, lead_id))
             conn.execute("INSERT OR IGNORE INTO blacklist (phone, reason, created_at) VALUES (?, ?, ?)", (phone, "Opt-out solicitado", now_iso))
@@ -1443,9 +1449,43 @@ async def process_lead_inbound_response(lead: dict, incoming_text: str, target_c
             pass
         return
 
-    # 3. Generate AI SDR reply
-    print(f"[Hermes SDR] Gerando resposta inteligente para lead #{lead_id} ({phone})...")
-    ai_reply = await generate_sdr_reply(lead, incoming_text, history_list)
+    # 3. Smart Handling: Courtesy / Farewell vs Simple Greeting vs Complex Response
+    clean_words = re.sub(r'[^\w\s]', '', lower).split()
+    clean_line = re.sub(r'[^\w\s]', '', lower).strip()
+
+    COURTESY_WORDS = (
+        "bom descanso", "boa noite", "bom fim de semana", "bom final de semana", "bom fds",
+        "tenha uma boa noite", "obrigado", "obrigada", "valeu", "valeu obrigado", "show de bola",
+        "show", "beleza", "combinado", "ok", "certo", "tranquilo", "perfeito", "abraço", "abracos",
+        "tchau", "até mais", "ate mais", "agradeço", "obrigadão", "obrigadao"
+    )
+    is_courtesy = any(w in lower for w in COURTESY_WORDS) and len(clean_words) <= 7
+
+    GREETING_WORDS = ("bom dia", "boa tarde", "ola", "olá", "oi", "opa", "oii", "oiee", "tudo bem", "tudo bem?")
+    is_simple_greeting = clean_line in GREETING_WORDS or (len(clean_words) <= 3 and any(w in lower for w in GREETING_WORDS))
+
+    if is_courtesy:
+        print(f"[Hermes SDR] Mensagem de cortesia/despedida detectada de {phone}: '{incoming_text}'. Respondendo com gentileza sem pitch.")
+        if any(k in lower for k in ("descanso", "boa noite")):
+            ai_reply = "Obrigado, igualmente! Tenha um ótimo descanso! 😊"
+        elif any(k in lower for k in ("fim de semana", "final de semana", "fds")):
+            ai_reply = "Obrigado, igualmente! Tenha um excelente final de semana! 🎉"
+        elif any(k in lower for k in ("obrigad", "valeu", "agradeço")):
+            ai_reply = "Por nada! Fico à disposição. Tenha um ótimo dia! ✨"
+        elif any(k in lower for k in ("combinado", "beleza", "ok", "perfeito", "tranquilo", "certo")):
+            ai_reply = "Combinado então! Um grande abraço e fico à disposição! 👍"
+        else:
+            ai_reply = "Combinado! Tenha um excelente dia e fico à disposição! 😊"
+    elif is_simple_greeting:
+        print(f"[Hermes SDR] Saudação simples detectada de {phone}: '{incoming_text}'. Respondendo naturalmente sem despejar pitch.")
+        if history_list and any(m.get("role") == "assistant" for m in history_list):
+            ai_reply = f"Olá, {lead_name}! Tudo bem por aí? Viu a mensagem que te enviei antes? Qualquer dúvida estou à disposição!"
+        else:
+            ai_reply = f"Olá, {lead_name}! Tudo bem por aí? Como posso te ajudar hoje?"
+    else:
+        # Generate AI SDR reply via OpenRouter
+        print(f"[Hermes SDR] Gerando resposta inteligente contextual para lead #{lead_id} ({phone})...")
+        ai_reply = await generate_sdr_reply(lead, incoming_text, history_list)
 
     # 4. Simulate human typing (3.5 to 6.0 seconds) and broadcast status
     await broadcast_chat_event("typing_status", {"lead_id": lead_id, "phone": phone, "status": "typing"})
@@ -1527,6 +1567,14 @@ async def incoming_reply(wh: IncomingWebhook, background_tasks: BackgroundTasks)
     text = wh.text.strip()
     if not text:
         return {"ignored": True, "reason": "empty_text"}
+
+    # Owner Guard: Never treat the owner (Salesio) as an SDR lead!
+    norm_sender = re.sub(r'\D', '', str(wh.senderNumber or ''))
+    norm_chat = re.sub(r'\D', '', str(wh.chatId or ''))
+    owner_digits = re.sub(r'\D', '', OWNER_PHONE)
+    if norm_sender in (owner_digits, "5546999765576", "554699765576") or "999765576" in norm_sender or "99765576" in norm_sender or "999765576" in norm_chat or "99765576" in norm_chat:
+        print(f"[Hermes SDR] Mensagem do dono ({norm_sender}) ignorada no funil de SDR.")
+        return {"ignored": True, "reason": "owner_message"}
 
     with get_db() as conn:
         lead = find_lead_by_phone(conn, wh.senderNumber or "")

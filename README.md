@@ -56,20 +56,26 @@ O **Hermes SDR** não é um chatbot tradicional baseado em árvores de decisão 
 - **Segmentação por Campanhas:** Suporte a múltiplos nichos (Educação BNCC Paraná, Negócios/PLR, Tecnologia, Turismo, Regional PR/SC, etc.).
 - **Interface Responsiva:** Otimizada com Tailwind CSS para abrir em qualquer smartphone com barra de ações rápidas ou em monitores desktop de alta resolução.
 
+### 9. ⏰ Agendador de Testes, Disparos e Assistente Pessoal (WhatsApp & Painel Web)
+- **Comando Direto pelo WhatsApp:** O Salesio Ninja comanda o Hermes via instruções em linguagem natural diretamente pelo seu WhatsApp (ex.: *"mande uma mensagem para #46999087711 às 19 horas dizendo..."*).
+- **Agendador Integrado no Painel SDR:** Botão `⏰ Agendar Envio` na barra de controle com atalhos de horário (`+10 min`, `+30 min`, `Hoje às 19h`, `Amanhã às 09h`, `Amanhã às 14h`), atalho `+ Meu WhatsApp`, prévia real em balão do WhatsApp e gestão completa da fila de envios pendentes com opções de *Disparar Já* e *Cancelar*.
+- **Fila Unificada e Worker Assíncrono:** Todas as mensagens agendadas (via WhatsApp ou Painel) alimentam a tabela `scheduled_dispatches` e são processadas a cada 15 segundos com simulação de digitação humana e notificação de entrega automática no WhatsApp pessoal do dono.
+- **Prevenção de Flickering / Sincronização Silenciosa:** O painel sincroniza os status em segundo plano sem piscar a tela e sem recriação forçada de ícones DOM.
+
 ---
 
 ## 🏗️ Arquitetura do Sistema
 
 ```
-[ WhatsApp ] <---> [ Baileys Bridge / Node.js ]
-                            ^
-                            | Webhooks & REST API
-                            v
-[ Hermes SDR Server (FastAPI + SQLite + EventSource SSE) ]
-       |                            |                           |
-       v                            v                           v
-[ OpenRouter LLM ]         [ Google Calendar ]        [ Painel Web Vue 3 + Tailwind ]
- (GPT-4o-mini)             (Agenda em Tempo Real)     (Live Chat + Human Takeover)
+[ WhatsApp do Dono / Leads ] <---> [ Baileys Bridge / Node.js ]
+                                            ^
+                                            | Webhooks & REST API
+                                            v
+              [ Hermes SDR Server (FastAPI + SQLite + Worker Assíncrono) ]
+                     |                             |                            |
+                     v                             v                            v
+              [ OpenRouter LLM ]          [ Google Calendar ]         [ Painel Web Vue 3 + Tailwind ]
+               (GPT-4o-mini)             (Agenda em Tempo Real)      (Live Chat + Agendador Unificado)
 ```
 
 ---
@@ -78,10 +84,12 @@ O **Hermes SDR** não é um chatbot tradicional baseado em árvores de decisão 
 
 ```
 hermes-sdr-crm1/
-├── sdr_server.py           # Backend FastAPI: Agente SDR, Anti-ban, Webhooks, SSE e CRM
+├── sdr_server.py           # Backend FastAPI: Agente SDR, Anti-ban, Agendador, Webhooks, SSE e CRM
+├── hermes_messenger.py     # CLI do Assistente Executivo WhatsApp (`wpp send`, `wpp schedule`, etc.)
 ├── sdr_ui/
-│   └── index.html          # Frontend SPA responsivo: Dashboard, Métricas e Chat ao Vivo
+│   └── index.html          # Frontend SPA responsivo: Dashboard, Agendador, Métricas e Chat ao Vivo
 ├── skills/                 # Skills do agente Antigravity
+│   ├── whatsapp-messenger/ # Skill do assistente executivo programável para WhatsApp
 │   ├── whatsapp-outbound-sdr/
 │   └── whatsapp-lead-extractor/
 ├── requirements.txt        # Dependências Python

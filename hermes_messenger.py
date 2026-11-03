@@ -85,12 +85,14 @@ def parse_schedule_time(s: str) -> datetime:
         return now + timedelta(minutes=val)
 
     # 2. "HH:MM" ou "HHhMM" ou "HHh" ou "HH"
-    m_time = re.search(r'(\d{1,2})(?:[:h](\d{2})?|h)?', s)
+    m_time = re.search(r'(\d{1,2})(?:[:h](\d{2})?|h|\s*horas?|\s*hrs?)?', s)
     is_tomorrow = 'amanha' in s or 'amanhã' in s
 
     if m_time:
         hour = int(m_time.group(1))
         minute = int(m_time.group(2)) if m_time.group(2) else 0
+        if 'e meia' in s or 'e 30' in s:
+            minute = 30
         target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if is_tomorrow:
             target += timedelta(days=1)

@@ -448,6 +448,17 @@
             <i data-lucide="user-plus" class="w-4 h-4"></i>
             <span>+ Teste Manual</span>
           </button>
+
+          <!-- Schedule Dispatches Button -->
+          <button @click="openScheduleModal"
+                  class="w-full sm:w-auto px-4 py-3.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-xs sm:text-sm font-bold transition flex items-center justify-center space-x-2 relative active:scale-95">
+            <i data-lucide="clock" class="w-4 h-4"></i>
+            <span>⏰ Agendar Envio</span>
+            <span v-if="scheduledPendingCount > 0" 
+                  class="ml-1 px-1.5 py-0.5 rounded-full bg-indigo-500 text-slate-950 font-bold text-[10px]">
+              {{ scheduledPendingCount }}
+            </span>
+          </button>
         </div>
 
         <!-- Pacing Controls (Clean Touch Layout) -->
@@ -995,6 +1006,230 @@
             <i data-lucide="send" class="w-3.5 h-3.5 fill-slate-950" :class="{'animate-spin': manualSending}"></i>
             <span>{{ manualSending ? 'Enviando...' : ('Disparar (' + parsedManualContacts.length + ')') }}</span>
           </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MODAL DE AGENDAMENTO DE TESTES E DISPAROS (Mobile Bottom Sheet / Desktop Modal) -->
+    <div v-if="isScheduleModalOpen" 
+         class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm transition-opacity">
+      <div class="glass border border-slate-700/80 rounded-t-2xl sm:rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[90vh]">
+        
+        <!-- Modal Header -->
+        <div class="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center border border-indigo-500/20 shrink-0">
+              <i data-lucide="clock" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+            </div>
+            <div>
+              <h3 class="text-xs sm:text-sm font-bold text-white">Agendador de Testes e Disparos</h3>
+              <p class="text-[10px] sm:text-[11px] text-slate-400">Integrado ao WhatsApp Bridge & Execução Automática</p>
+            </div>
+          </div>
+          <button @click="isScheduleModalOpen = false" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <!-- Tabs inside Modal -->
+        <div class="flex border-b border-slate-800 bg-slate-900/40 px-4 sm:px-6">
+          <button @click="scheduleActiveTab = 'new'"
+                  class="py-2.5 px-4 text-xs font-bold border-b-2 transition flex items-center space-x-1.5"
+                  :class="scheduleActiveTab === 'new' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-white'">
+            <i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i>
+            <span>Novo Agendamento</span>
+          </button>
+          <button @click="scheduleActiveTab = 'list'; loadScheduledMessages()"
+                  class="py-2.5 px-4 text-xs font-bold border-b-2 transition flex items-center space-x-1.5"
+                  :class="scheduleActiveTab === 'list' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-white'">
+            <i data-lucide="list-ordered" class="w-3.5 h-3.5"></i>
+            <span>Fila de Agendados</span>
+            <span v-if="scheduledPendingCount > 0" class="px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px]">
+              {{ scheduledPendingCount }}
+            </span>
+          </button>
+        </div>
+
+        <!-- Modal Body (Scrollable) -->
+        <div class="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+          
+          <!-- TAB 1: NOVO AGENDAMENTO -->
+          <div v-if="scheduleActiveTab === 'new'" class="space-y-4">
+            <!-- Destinatário -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-slate-300 font-semibold text-xs">Destinatário:</label>
+                <button type="button" @click="insertMyNumberToSchedule"
+                        class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-400 border border-slate-700 text-[11px] font-medium transition flex items-center space-x-1">
+                  <i data-lucide="user-check" class="w-3 h-3"></i>
+                  <span>+ Meu WhatsApp (46 99976-5576)</span>
+                </button>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <input type="text" v-model="schedulePhone" placeholder="WhatsApp (ex: 5546999765576)"
+                         class="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 font-mono text-xs focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                  <input type="text" v-model="scheduleName" placeholder="Nome do Destinatário (ex: Salesio)"
+                         class="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 text-xs focus:outline-none focus:border-indigo-500">
+                </div>
+              </div>
+            </div>
+
+            <!-- Data e Hora do Agendamento -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-slate-300 font-semibold text-xs">Data e Horário de Envio (Horário de Brasília):</label>
+              </div>
+              
+              <!-- Quick Presets -->
+              <div class="flex flex-wrap gap-1.5 mb-2">
+                <button type="button" @click="setSchedulePreset(10)"
+                        class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[11px] transition">
+                  ⏱️ +10 min
+                </button>
+                <button type="button" @click="setSchedulePreset(30)"
+                        class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[11px] transition">
+                  ⏱️ +30 min
+                </button>
+                <button type="button" @click="setSchedulePreset('today_19')"
+                        class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[11px] transition">
+                  🌙 Hoje às 19h
+                </button>
+                <button type="button" @click="setSchedulePreset('tomorrow_09')"
+                        class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[11px] transition">
+                  ☀️ Amanhã às 09h
+                </button>
+                <button type="button" @click="setSchedulePreset('tomorrow_14')"
+                        class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[11px] transition">
+                  ☕ Amanhã às 14h
+                </button>
+              </div>
+
+              <div class="relative">
+                <input type="datetime-local" v-model="scheduleDateTime"
+                       class="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-200 text-xs focus:outline-none focus:border-indigo-500 font-mono">
+              </div>
+            </div>
+
+            <!-- Mensagem -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-slate-300 font-semibold text-xs">Mensagem a Ser Enviada:</label>
+                <button type="button" @click="setScheduleQuickTemplate"
+                        class="text-indigo-400 hover:underline text-[11px]">
+                  Inserir modelo padrão
+                </button>
+              </div>
+              <textarea v-model="scheduleMessage" rows="3"
+                        class="w-full bg-slate-900/90 border border-slate-700 rounded-xl p-3 text-slate-200 font-mono text-xs focus:outline-none focus:border-indigo-500"
+                        placeholder="Digite o texto que o Hermes deve enviar no horário marcado..."></textarea>
+            </div>
+
+            <!-- Preview no WhatsApp -->
+            <div class="bg-[#0b141a] rounded-xl p-3 border border-slate-800">
+              <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Prévia no WhatsApp:</span>
+              <div class="wa-bubble p-2.5 max-w-[95%] text-xs text-white shadow ml-auto">
+                <div class="whitespace-pre-line leading-relaxed">{{ scheduleMessage || 'Sua mensagem aparecerá aqui...' }}</div>
+              </div>
+            </div>
+
+            <!-- Resumo e Garantia -->
+            <div class="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-start space-x-2 text-[11px] text-indigo-300">
+              <i data-lucide="info" class="w-4 h-4 shrink-0 text-indigo-400 mt-0.5"></i>
+              <div>
+                O Hermes enviará esta mensagem automaticamente através do WhatsApp conectado, simulará digitação humana antes de enviar e notificará o seu WhatsApp pessoal assim que a entrega for concluída.
+              </div>
+            </div>
+
+            <!-- Feedback Alertas -->
+            <div v-if="scheduleError" class="p-2.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-xs">
+              {{ scheduleError }}
+            </div>
+            <div v-if="scheduleSuccessMsg" class="p-2.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs flex items-center space-x-1.5">
+              <i data-lucide="check-circle" class="w-4 h-4"></i>
+              <span>{{ scheduleSuccessMsg }}</span>
+            </div>
+          </div>
+
+          <!-- TAB 2: FILA DE AGENDADOS -->
+          <div v-if="scheduleActiveTab === 'list'" class="space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-slate-300 font-semibold text-xs">Fila de Disparos Agendados:</span>
+              <button @click="loadScheduledMessages" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] flex items-center space-x-1 transition">
+                <i data-lucide="refresh-cw" class="w-3 h-3" :class="{'animate-spin': scheduledLoading}"></i>
+                <span>Atualizar</span>
+              </button>
+            </div>
+
+            <div v-if="scheduledLoading" class="text-center py-6 text-slate-500 text-xs">
+              Carregando agendamentos...
+            </div>
+
+            <div v-else-if="scheduledList.length === 0" class="text-center py-8 bg-slate-900/40 rounded-xl border border-slate-800 text-slate-500 text-xs">
+              Nenhuma mensagem agendada no histórico.
+            </div>
+
+            <div v-else class="space-y-2 max-h-80 overflow-y-auto pr-1">
+              <div v-for="item in scheduledList" :key="item.id"
+                   class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center space-x-2 mb-1">
+                    <span class="font-mono font-bold text-white">+{{ item.phone }}</span>
+                    <span class="text-slate-400 font-medium truncate">({{ item.lead_name }})</span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold"
+                          :class="{
+                            'bg-amber-500/20 text-amber-300 border border-amber-500/30': item.status === 'PENDING',
+                            'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30': item.status === 'SENT',
+                            'bg-red-500/20 text-red-300 border border-red-500/30': item.status === 'FAILED',
+                            'bg-slate-800 text-slate-400': item.status === 'CANCELLED'
+                          }">
+                      {{ item.status === 'PENDING' ? '⏳ PENDENTE' : (item.status === 'SENT' ? '✅ ENTREGUE' : (item.status === 'FAILED' ? '❌ FALHA' : '⛔ CANCELADO')) }}
+                    </span>
+                  </div>
+                  <div class="text-[11px] text-slate-300 font-mono truncate mb-1">
+                    "{{ item.message }}"
+                  </div>
+                  <div class="text-[10px] text-slate-500 flex items-center space-x-2">
+                    <span>⏰ Agendado para: <strong class="text-indigo-400">{{ item.scheduled_for_local }}</strong></span>
+                    <span v-if="item.sent_at" class="text-emerald-400">| Entregue</span>
+                  </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex items-center space-x-1.5 shrink-0" v-if="item.status === 'PENDING'">
+                  <button @click="triggerSendNowScheduled(item.id)" title="Disparar Agora"
+                          class="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-semibold transition active:scale-95 flex items-center space-x-1">
+                    <i data-lucide="play" class="w-3 h-3"></i>
+                    <span>Disparar Já</span>
+                  </button>
+                  <button @click="cancelScheduled(item.id)" title="Cancelar Agendamento"
+                          class="px-2.5 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-[11px] font-semibold transition active:scale-95 flex items-center space-x-1">
+                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                    <span>Cancelar</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="px-4 sm:px-6 py-3 border-t border-slate-800 flex items-center justify-between bg-slate-900/80 pb-safe">
+          <button @click="isScheduleModalOpen = false" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold transition">
+            Fechar
+          </button>
+
+          <div v-if="scheduleActiveTab === 'new'">
+            <button @click="submitScheduleMessage" :disabled="scheduleSending || !schedulePhone || !scheduleMessage || !scheduleDateTime"
+                    class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 disabled:opacity-40 text-white font-bold text-xs tracking-wide shadow-lg transition flex items-center space-x-1.5 active:scale-95">
+              <i data-lucide="calendar" class="w-3.5 h-3.5" :class="{'animate-spin': scheduleSending}"></i>
+              <span>{{ scheduleSending ? 'Agendando...' : 'Confirmar Agendamento' }}</span>
+            </button>
+          </div>
         </div>
 
       </div>
@@ -1942,6 +2177,19 @@
         manualImmediate: true,
         manualSending: false,
         manualResults: [],
+        // Schedule Dispatches State
+        isScheduleModalOpen: false,
+        schedulePhone: '',
+        scheduleName: '',
+        scheduleMessage: '',
+        scheduleDateTime: '',
+        scheduleSending: false,
+        scheduleError: '',
+        scheduleSuccessMsg: '',
+        scheduledList: [],
+        scheduledLoading: false,
+        scheduleActiveTab: 'new',
+        scheduledPendingCount: 0,
         settings: {
           daily_limit: 35,
           min_delay: 60,
@@ -2047,6 +2295,7 @@
         this.fetchCampaigns();
         this.fetchLeads();
         this.fetchNinjaJobs();
+        this.loadScheduledMessages();
         this.initLiveStream();
         if (window.location.hash === '#chat') {
           this.openLiveChatView();
@@ -2055,6 +2304,7 @@
           this.statsInterval = setInterval(() => {
             if (this.isAuthenticated) {
               this.fetchStats();
+              this.loadScheduledMessages();
               if (this.currentView === 'livechat' && !this.loadingConversations) {
                 this.loadChatConversations();
               }
@@ -2316,6 +2566,127 @@
           alert('Erro de conexão: ' + e.message);
         }
         this.manualSending = false;
+      },
+      openScheduleModal() {
+        this.isScheduleModalOpen = true;
+        this.scheduleError = '';
+        this.scheduleSuccessMsg = '';
+        this.scheduleActiveTab = 'new';
+        if (!this.schedulePhone) {
+          this.schedulePhone = '5546999765576';
+          this.scheduleName = 'Salesio Ninja';
+        }
+        if (!this.scheduleMessage) {
+          this.scheduleMessage = 'Olá! Mensagem de teste agendada pelo painel SDR do Hermes.';
+        }
+        this.setSchedulePreset(15);
+        this.loadScheduledMessages();
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+      },
+      insertMyNumberToSchedule() {
+        this.schedulePhone = '5546999765576';
+        this.scheduleName = 'Salesio Ninja';
+      },
+      setSchedulePreset(val) {
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        if (typeof val === 'number') {
+          now.setMinutes(now.getMinutes() + val);
+        } else if (val === 'today_19') {
+          now.setHours(19, 0, 0, 0);
+          if (now <= new Date()) {
+            now.setDate(now.getDate() + 1);
+          }
+        } else if (val === 'tomorrow_09') {
+          now.setDate(now.getDate() + 1);
+          now.setHours(9, 0, 0, 0);
+        } else if (val === 'tomorrow_14') {
+          now.setDate(now.getDate() + 1);
+          now.setHours(14, 0, 0, 0);
+        }
+        this.scheduleDateTime = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      },
+      setScheduleQuickTemplate() {
+        this.scheduleMessage = (this.settings.message_template || 'Olá {nome}, tudo bem? Aqui é o Salesio Ninja. Estou entrando em contato para apresentar nossas soluções educacionais e de automação.').replace('{nome}', this.scheduleName || 'Contato').replace('{Olá|Oi}', 'Olá');
+      },
+      async submitScheduleMessage() {
+        if (!this.schedulePhone || !this.scheduleMessage || !this.scheduleDateTime) {
+          this.scheduleError = 'Preencha o telefone, mensagem e horário de agendamento.';
+          return;
+        }
+        this.scheduleSending = true;
+        this.scheduleError = '';
+        this.scheduleSuccessMsg = '';
+        try {
+          const res = await fetch('/painel/api/schedule-message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone: this.schedulePhone,
+              name: this.scheduleName,
+              message: this.scheduleMessage,
+              scheduled_at: this.scheduleDateTime
+            })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            this.scheduleSuccessMsg = `Agendamento #${data.id} confirmado para ${data.scheduled_for_local}!`;
+            await this.loadScheduledMessages();
+            setTimeout(() => {
+              this.scheduleActiveTab = 'list';
+              this.scheduleSuccessMsg = '';
+            }, 1200);
+          } else {
+            this.scheduleError = data.detail || data.message || 'Erro ao criar agendamento.';
+          }
+        } catch (e) {
+          this.scheduleError = 'Erro de conexão: ' + e.message;
+        } finally {
+          this.scheduleSending = false;
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        }
+      },
+      async loadScheduledMessages() {
+        this.scheduledLoading = true;
+        try {
+          const res = await fetch('/painel/api/scheduled-messages').then(r => r.json());
+          if (res.success && res.items) {
+            this.scheduledList = res.items;
+            this.scheduledPendingCount = res.pending_count || 0;
+          }
+        } catch (e) {
+          console.error('Erro ao carregar mensagens agendadas:', e);
+        } finally {
+          this.scheduledLoading = false;
+          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        }
+      },
+      async cancelScheduled(id) {
+        if (!confirm('Deseja realmente cancelar este agendamento?')) return;
+        try {
+          const res = await fetch(`/painel/api/cancel-scheduled/${id}`, { method: 'POST' }).then(r => r.json());
+          if (res.success) {
+            await this.loadScheduledMessages();
+          } else {
+            alert(res.detail || 'Erro ao cancelar.');
+          }
+        } catch (e) {
+          alert('Erro de conexão: ' + e.message);
+        }
+      },
+      async triggerSendNowScheduled(id) {
+        if (!confirm('Deseja disparar este agendamento imediatamente?')) return;
+        try {
+          const res = await fetch(`/painel/api/send-now-scheduled/${id}`, { method: 'POST' }).then(r => r.json());
+          if (res.success) {
+            alert(res.message || 'Disparo imediato agendado!');
+            await this.loadScheduledMessages();
+          } else {
+            alert(res.detail || 'Erro ao antecipar envio.');
+          }
+        } catch (e) {
+          alert('Erro de conexão: ' + e.message);
+        }
       },
       openLiveChatView() {
         this.currentView = 'livechat';

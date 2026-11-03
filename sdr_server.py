@@ -303,6 +303,19 @@ def init_db():
             created_at TEXT
         )
         """)
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS scheduled_dispatches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone TEXT NOT NULL,
+            lead_name TEXT,
+            message TEXT NOT NULL,
+            scheduled_for TEXT NOT NULL,
+            status TEXT DEFAULT 'PENDING',
+            created_at TEXT NOT NULL,
+            sent_at TEXT,
+            error TEXT
+        )
+        """)
 
         # Migration: ensure leads table has human_takeover and last_message_at
         cols = [c[1] for c in conn.execute("PRAGMA table_info(leads)").fetchall()]
@@ -1157,6 +1170,225 @@ async def manual_dispatch(payload: ManualDispatchRequest):
         "dry_run": payload.dry_run,
         "results": results
     }
+
+# -------------------------------------------------------------
+# Scheduled Dispatches / Scheduler Endpoints
+# -------------------------------------------------------------
+class ScheduleMessagePayload(BaseModel):
+    phone: str
+    name: Optional[str] = ""
+    message: str
+    scheduled_at: str
+
+def normalize_phone_number(raw: str) -> str:
+    digits = re.sub(r'\D', '', str(raw or ''))
+    if not digits:
+        return ''
+    if not digits.startswith('55'):
+        if len(digits) in (10, 11):
+            digits = '55' + digits
+    if digits.startswith('55') and len(digits) == 12:
+        ddd = digits[2:4]
+        rest = digits[4:]
+        digits = f"55{ddd}9{rest}"
+    return digits
+
+def parse_schedule_time_input(s: str) -> datetime:
+    tz_br = timezone(timedelta(hours=-3))
+    now_br = datetime.now(tz_br)
+    s = s.strip()
+    
+    # 1. HTML datetime-local: YYYY-MM-DDTHH:MM or YYYY-MM-DD HH:MM(:SS)?
+    if re.match(r'^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}', s):
+        clean_s = s.replace(" ", "T")
+        if len(clean_s) == 16:
+            clean_s += ":00"
+        try:
+            dt = datetime.fromisoformat(clean_s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=tz_br)
+            return dt.astimezone(timezone.utc)
+        except Exception:
+            pass
+
+    s_lower = s.lower()
+    # 2. Relative time: "em X min / horas"
+    m_rel = re.search(r'em\s+(\d+)\s*(min|minuto|m|hora|h)', s_lower)
+    if m_rel:
+        val = int(m_rel.group(1))
+        unit = m_rel.group(2)
+        target = now_br + (timedelta(hours=val) if 'h' in unit else timedelta(minutes=val))
+        return target.astimezone(timezone.utc)
+
+    # 3. Simple time: HH:MM or HHh
+    m_time = re.search(r'(\d{1,2})(?:[:h](\d{2})?|h|\s*horas?|\s*hrs?)?', s_lower)
+    if m_time:
+        hour = int(m_time.group(1))
+        minute = int(m_time.group(2)) if m_time.group(2) else 0
+        if 'e meia' in s_lower or 'e 30' in s_lower:
+            minute = 30
+        target = now_br.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        is_tomorrow = 'amanha' in s_lower or 'amanhã' in s_lower
+        if is_tomorrow:
+            target += timedelta(days=1)
+        elif target <= now_br and 'hoje' not in s_lower:
+            target += timedelta(days=1)
+        return target.astimezone(timezone.utc)
+
+    # 4. Fallback ISO or general
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tz_br)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return (now_br + timedelta(minutes=10)).astimezone(timezone.utc)
+
+@app.post("/painel/api/schedule-message")
+async def schedule_message_endpoint(payload: ScheduleMessagePayload):
+    phone = normalize_phone_number(payload.phone)
+    if not phone or len(phone) < 10:
+        raise HTTPException(status_code=400, detail="Número de WhatsApp inválido.")
+    msg = payload.message.strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="A mensagem não pode estar vazia.")
+    
+    dt_utc = parse_schedule_time_input(payload.scheduled_at)
+    utc_iso = dt_utc.isoformat()
+    now_utc_iso = datetime.now(timezone.utc).isoformat()
+    
+    tz_br = timezone(timedelta(hours=-3))
+    dt_local = dt_utc.astimezone(tz_br)
+    local_str = dt_local.strftime("%d/%m/%Y às %H:%M")
+    
+    with get_db() as conn:
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS scheduled_dispatches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone TEXT NOT NULL,
+            lead_name TEXT,
+            message TEXT NOT NULL,
+            scheduled_for TEXT NOT NULL,
+            status TEXT DEFAULT 'PENDING',
+            created_at TEXT NOT NULL,
+            sent_at TEXT,
+            error TEXT
+        )
+        """)
+        cur = conn.cursor()
+        cur.execute("""
+        INSERT INTO scheduled_dispatches (phone, lead_name, message, scheduled_for, status, created_at)
+        VALUES (?, ?, ?, ?, 'PENDING', ?)
+        """, (phone, payload.name or 'Contato', msg, utc_iso, now_utc_iso))
+        disp_id = cur.lastrowid
+        conn.commit()
+        
+    return {
+        "success": True,
+        "id": disp_id,
+        "phone": phone,
+        "name": payload.name or 'Contato',
+        "message": msg,
+        "scheduled_for": utc_iso,
+        "scheduled_for_local": local_str
+    }
+
+@app.get("/painel/api/scheduled-messages")
+async def get_scheduled_messages(status: Optional[str] = None):
+    tz_br = timezone(timedelta(hours=-3))
+    with get_db() as conn:
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS scheduled_dispatches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone TEXT NOT NULL,
+            lead_name TEXT,
+            message TEXT NOT NULL,
+            scheduled_for TEXT NOT NULL,
+            status TEXT DEFAULT 'PENDING',
+            created_at TEXT NOT NULL,
+            sent_at TEXT,
+            error TEXT
+        )
+        """)
+        if status:
+            rows = conn.execute("""
+            SELECT id, phone, lead_name, message, scheduled_for, status, created_at, sent_at, error
+            FROM scheduled_dispatches
+            WHERE status = ?
+            ORDER BY id DESC LIMIT 100
+            """, (status,)).fetchall()
+        else:
+            rows = conn.execute("""
+            SELECT id, phone, lead_name, message, scheduled_for, status, created_at, sent_at, error
+            FROM scheduled_dispatches
+            ORDER BY id DESC LIMIT 100
+            """).fetchall()
+            
+    items = []
+    for r in rows:
+        sched_utc = r["scheduled_for"]
+        sched_local = sched_utc
+        try:
+            dt = datetime.fromisoformat(sched_utc)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            sched_local = dt.astimezone(tz_br).strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            pass
+            
+        created_local = r["created_at"]
+        try:
+            dt_c = datetime.fromisoformat(r["created_at"])
+            if dt_c.tzinfo is None:
+                dt_c = dt_c.replace(tzinfo=timezone.utc)
+            created_local = dt_c.astimezone(tz_br).strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            pass
+
+        items.append({
+            "id": r["id"],
+            "phone": r["phone"],
+            "lead_name": r["lead_name"] or "Contato",
+            "message": r["message"],
+            "scheduled_for": r["scheduled_for"],
+            "scheduled_for_local": sched_local,
+            "status": r["status"],
+            "created_at": r["created_at"],
+            "created_at_local": created_local,
+            "sent_at": r["sent_at"],
+            "error": r["error"]
+        })
+        
+    return {
+        "success": True,
+        "items": items,
+        "pending_count": sum(1 for x in items if x["status"] == "PENDING")
+    }
+
+@app.post("/painel/api/cancel-scheduled/{disp_id}")
+async def cancel_scheduled_message(disp_id: int):
+    with get_db() as conn:
+        row = conn.execute("SELECT id, status FROM scheduled_dispatches WHERE id = ?", (disp_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Agendamento não encontrado.")
+        if row["status"] != "PENDING":
+            raise HTTPException(status_code=400, detail=f"Não é possível cancelar agendamento com status '{row['status']}'.")
+        conn.execute("UPDATE scheduled_dispatches SET status = 'CANCELLED' WHERE id = ?", (disp_id,))
+        conn.commit()
+    return {"success": True, "message": f"Agendamento #{disp_id} cancelado com sucesso."}
+
+@app.post("/painel/api/send-now-scheduled/{disp_id}")
+async def send_now_scheduled_message(disp_id: int):
+    past_utc_iso = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    with get_db() as conn:
+        row = conn.execute("SELECT id, status FROM scheduled_dispatches WHERE id = ?", (disp_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Agendamento não encontrado.")
+        if row["status"] != "PENDING":
+            raise HTTPException(status_code=400, detail=f"Não é possível disparar agendamento com status '{row['status']}'.")
+        conn.execute("UPDATE scheduled_dispatches SET scheduled_for = ? WHERE id = ?", (past_utc_iso, disp_id))
+        conn.commit()
+    return {"success": True, "message": f"Agendamento #{disp_id} antecipado para disparo imediato."}
 
 @app.get("/painel/api/calendar")
 async def get_calendar_events():

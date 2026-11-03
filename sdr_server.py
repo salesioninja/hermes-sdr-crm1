@@ -58,7 +58,7 @@ for env_candidate in [os.path.join(DATA_DIR, ".env"), os.path.join(os.getcwd(), 
         except Exception:
             pass
 
-BRIDGE_URL = os.environ.get("WHATSAPP_BRIDGE_URL", "http://hermes:3000")
+BRIDGE_URL = os.environ.get("WHATSAPP_BRIDGE_URL", "http://127.0.0.1:3000")
 OWNER_PHONE = os.environ.get("OWNER_PHONE", "5546999765576")
 
 app = FastAPI(title="Hermes Outbound SDR Engine", docs_url="/painel/docs", openapi_url="/painel/openapi.json")

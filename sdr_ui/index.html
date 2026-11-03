@@ -1040,7 +1040,7 @@
             <i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i>
             <span>Novo Agendamento</span>
           </button>
-          <button @click="scheduleActiveTab = 'list'; loadScheduledMessages()"
+          <button @click="scheduleActiveTab = 'list'; loadScheduledMessages(false)"
                   class="py-2.5 px-4 text-xs font-bold border-b-2 transition flex items-center space-x-1.5"
                   :class="scheduleActiveTab === 'list' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-white'">
             <i data-lucide="list-ordered" class="w-3.5 h-3.5"></i>
@@ -1158,17 +1158,17 @@
           <div v-if="scheduleActiveTab === 'list'" class="space-y-3">
             <div class="flex items-center justify-between">
               <span class="text-slate-300 font-semibold text-xs">Fila de Disparos Agendados:</span>
-              <button @click="loadScheduledMessages" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] flex items-center space-x-1 transition">
+              <button @click="loadScheduledMessages(true)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] flex items-center space-x-1 transition">
                 <i data-lucide="refresh-cw" class="w-3 h-3" :class="{'animate-spin': scheduledLoading}"></i>
                 <span>Atualizar</span>
               </button>
             </div>
 
-            <div v-if="scheduledLoading" class="text-center py-6 text-slate-500 text-xs">
+            <div v-if="scheduledLoading && scheduledList.length === 0" class="text-center py-6 text-slate-500 text-xs">
               Carregando agendamentos...
             </div>
 
-            <div v-else-if="scheduledList.length === 0" class="text-center py-8 bg-slate-900/40 rounded-xl border border-slate-800 text-slate-500 text-xs">
+            <div v-else-if="!scheduledLoading && scheduledList.length === 0" class="text-center py-8 bg-slate-900/40 rounded-xl border border-slate-800 text-slate-500 text-xs">
               Nenhuma mensagem agendada no histórico.
             </div>
 
@@ -2304,7 +2304,7 @@
           this.statsInterval = setInterval(() => {
             if (this.isAuthenticated) {
               this.fetchStats();
-              this.loadScheduledMessages();
+              this.loadScheduledMessages(false);
               if (this.currentView === 'livechat' && !this.loadingConversations) {
                 this.loadChatConversations();
               }
@@ -2373,7 +2373,6 @@
             this.settings.max_delay = this.stats.max_delay;
             this.settings.dry_run = this.stats.dry_run;
             this.settings.active_campaign = this.stats.active_campaign;
-            this.$nextTick(() => lucide.createIcons());
           }
         } catch (e) {
           console.error(e);
@@ -2646,19 +2645,25 @@
           this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
         }
       },
-      async loadScheduledMessages() {
-        this.scheduledLoading = true;
+      async loadScheduledMessages(showSpinner = false) {
+        if (showSpinner && this.scheduledList.length === 0) {
+          this.scheduledLoading = true;
+        }
         try {
           const res = await fetch('/painel/api/scheduled-messages').then(r => r.json());
           if (res.success && res.items) {
-            this.scheduledList = res.items;
+            const oldJson = JSON.stringify(this.scheduledList);
+            const newJson = JSON.stringify(res.items);
+            if (oldJson !== newJson) {
+              this.scheduledList = res.items;
+              this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+            }
             this.scheduledPendingCount = res.pending_count || 0;
           }
         } catch (e) {
           console.error('Erro ao carregar mensagens agendadas:', e);
         } finally {
           this.scheduledLoading = false;
-          this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
         }
       },
       async cancelScheduled(id) {

@@ -1501,17 +1501,69 @@ def resolve_date_arg(date_str: str) -> str:
             return target.isoformat()
     return d
 
+async def list_calendar_events_for_phone(lead_phone: str) -> list:
+    """
+    Lista eventos agendados nos próximos 30 dias que contenham o telefone do lead.
+    Retorna lista de dicts: [{'id': event_id, 'line': line_text}]
+    """
+    clean_phone = re.sub(r'\D', '', str(lead_phone))
+    if not clean_phone:
+        return []
+    phone_suffix = clean_phone[-8:]
+    cal_script = "/opt/data/hermes_calendar.py" if os.path.exists("/opt/data/hermes_calendar.py") else "hermes_calendar.py"
+    cmd = f"python3 {cal_script} list 30"
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await proc.communicate()
+        out_text = stdout.decode("utf-8", errors="replace").strip()
+        matched = []
+        for line in out_text.splitlines():
+            if phone_suffix in line or clean_phone in line:
+                m = re.search(r'\(ID:\s*([a-zA-Z0-9_-]+)\)', line)
+                if m:
+                    matched.append({"id": m.group(1), "line": line})
+        return matched
+    except Exception as e:
+        print(f"[Hermes SDR Calendar] Erro ao listar eventos do lead {lead_phone}: {e}")
+        return []
+
+async def delete_calendar_event_by_id(event_id: str) -> bool:
+    """
+    Deleta um compromisso específico da Agenda Google pelo ID.
+    """
+    cal_script = "/opt/data/hermes_calendar.py" if os.path.exists("/opt/data/hermes_calendar.py") else "hermes_calendar.py"
+    cmd = f"python3 {cal_script} del {event_id}"
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await proc.communicate()
+        out_text = stdout.decode("utf-8", errors="replace").strip()
+        print(f"[Hermes SDR Calendar] Removido evento {event_id}: {out_text}")
+        return "SUCESSO" in out_text
+    except Exception as e:
+        print(f"[Hermes SDR Calendar] Erro ao deletar evento {event_id}: {e}")
+        return False
+
 async def check_and_execute_calendar_booking(incoming_text: str, conversation_history: list, lead_name: str, lead_phone: str) -> Optional[dict]:
     """
-    Detects if the lead confirmed or requested an appointment / call / meeting.
-    Extracts date and time, then executes Google Calendar CLI to actually book the event.
+    Detecta se o lead confirmou, propôs, reagendou ou solicitou cancelamento de uma reunião/call.
+    Ao reagendar, cancela automaticamente o evento anterior na Agenda Google.
+    Ao cancelar, remove o compromisso e confirma sem dar opt-out indevido.
     """
     lower = incoming_text.lower()
     SCHED_KEYWORDS = (
         "reagendar", "agendar", "marcar", "às", "as ", "horas", "horário", "horario",
         "amanhã", "amanha", "hoje", "segunda", "terça", "terca", "quarta", "quinta", "sexta",
         "pode ser", "vamos marcar", "vamos reagendar", "vamos agendar", "combinado às", "combinado as",
-        "da manhã", "da tarde", "da manha", "da noite"
+        "da manhã", "da tarde", "da manha", "da noite", "cancelar", "cancela", "desmarcar",
+        "desmarca", "remarcar", "remarca"
     )
     if not any(k in lower for k in SCHED_KEYWORDS):
         return None
@@ -1526,21 +1578,31 @@ async def check_and_execute_calendar_booking(incoming_text: str, conversation_hi
         recent_msgs.append(f"{role}: {m.get('message', '')}")
     history_snippet = "\n".join(recent_msgs)
 
-    extract_system = f"""Você é um extrator especializado em identificar intenções de agendamento em conversas de WhatsApp no Brasil.
+    extract_system = f"""Você é um extrator especializado em identificar intenções de agendamento, reagendamento e cancelamento de reuniões em conversas de WhatsApp no Brasil.
 Data e horário de referência de hoje: {now_str}.
 
-Tarefa: Analisar a mensagem do lead e o histórico para verificar se o lead ESCOLHEU, CONFIRMOU ou PEDIU PARA AGENDAR/REAGENDAR uma data e horário de conversa, call ou reunião.
+Tarefa: Analisar a mensagem do lead e o histórico para verificar se o lead:
+1. ESCOLHEU, CONFIRMOU ou PEDIU PARA AGENDAR/REAGENDAR uma data e horário de conversa, call ou reunião.
+2. PEDIU PARA CANCELAR OU DESMARCAR uma reunião existente (ex: "CANCELAR A REUNIAO DE AMANHA AS 08 OK", "pode desmarcar a reunião", "cancela o agendamento de amanhã", "desmarcar").
 
 Regras:
-1. Se o lead propôs ou confirmou data e horário (ex: "quero reagendar para as 08 horas de amanhã", "pode ser amanhã às 15h", "vamos marcar hoje às 16h", "quinta às 10h"):
+1. Se o lead propôs, confirmou ou reagendou data e horário (ex: "quero reagendar para as 08 horas de amanhã", "pode ser amanhã às 15h", "vamos marcar hoje às 16h", "quinta às 10h"):
    Retorne APENAS um JSON no formato:
    {{
      "is_booking": true,
+     "action": "agendar",
      "date_arg": "amanha" (ou "hoje" ou no formato "YYYY-MM-DD" se for outro dia da semana/mês),
-     "time_arg": "08:00" (formato HH:MM 24 horas, ex: 08:00, 14:30),
-     "action": "agendar"
+     "time_arg": "08:00" (formato HH:MM 24 horas, ex: 08:00, 14:30)
    }}
-2. Se o lead NÃO definiu nem confirmou dia e horário (por exemplo, só perguntou "o que você faz?", "quem é você?", "quanto custa?", ou agradeceu sem marcar hora):
+2. Se o lead pediu para CANCELAR ou DESMARCAR a reunião (ex: "CANCELAR A REUNIAO DE AMANHA AS 08 OK", "cancela minha reunião de amanhã", "favor desmarcar a conversa", "pode cancelar a reunião"):
+   Retorne APENAS um JSON no formato:
+   {{
+     "is_booking": true,
+     "action": "cancelar",
+     "date_arg": "amanha" (ou data informada, ou null se não especificou),
+     "time_arg": "08:00" (ou horário informado, ou null se não especificou)
+   }}
+3. Se o lead NÃO definiu data e hora, ou apenas disse que não pode / perguntou algo (ex: "acho que não vou conseguir amanhã", "o que você faz?", "quanto custa?"):
    Retorne APENAS:
    {{
      "is_booking": false
@@ -1573,10 +1635,37 @@ Retorne ESTRITAMENTE o JSON, sem nenhum texto adicional."""
                 clean_json = re.sub(r'^```json\s*|^```\s*|```$', '', raw_txt, flags=re.MULTILINE).strip()
                 parsed = json.loads(clean_json)
                 if parsed.get("is_booking"):
+                    action = parsed.get("action", "agendar")
+                    
+                    # CASO 1: Cancelamento explícito de reunião
+                    if action == "cancelar":
+                        existing_events = await list_calendar_events_for_phone(lead_phone)
+                        deleted_events = []
+                        for ev in existing_events:
+                            ok = await delete_calendar_event_by_id(ev["id"])
+                            if ok:
+                                deleted_events.append(ev)
+                        
+                        d_arg = parsed.get("date_arg") or "agendada"
+                        t_arg = parsed.get("time_arg") or ""
+                        print(f"[Hermes SDR Calendar] Reunião cancelada para {lead_name} (+{lead_phone}): {len(deleted_events)} evento(s) removido(s)")
+                        return {
+                            "success": True,
+                            "action": "cancelar",
+                            "date_arg": d_arg,
+                            "time_arg": t_arg,
+                            "deleted_events": deleted_events,
+                            "output": f"Reunião cancelada com sucesso na Agenda Google ({len(deleted_events)} evento(s) removido(s))."
+                        }
+                    
+                    # CASO 2: Agendamento ou Reagendamento com nova data/hora
                     date_arg = resolve_date_arg(parsed.get("date_arg", "amanha"))
                     time_arg = parsed.get("time_arg", "10:00")
                     if ":" not in time_arg:
                         time_arg = f"{int(time_arg):02d}:00"
+                    
+                    # Busca eventos antigos deste lead para cancelar ao reagendar
+                    existing_events = await list_calendar_events_for_phone(lead_phone)
                     
                     summary = f"Reunião: {lead_name} (+{lead_phone})"
                     cal_script = "/opt/data/hermes_calendar.py" if os.path.exists("/opt/data/hermes_calendar.py") else "hermes_calendar.py"
@@ -1595,17 +1684,30 @@ Retorne ESTRITAMENTE o JSON, sem nenhum texto adicional."""
                     if "SUCESSO" in out_text:
                         link_match = re.search(r'Link:\s*(https://\S+)', out_text)
                         cal_link = link_match.group(1) if link_match else ""
+                        
+                        # Remove agendamento antigo se estiver reagendando
+                        deleted_old = []
+                        for old_ev in existing_events:
+                            ok = await delete_calendar_event_by_id(old_ev["id"])
+                            if ok:
+                                deleted_old.append(old_ev)
+                        if deleted_old:
+                            print(f"[Hermes SDR Calendar] {len(deleted_old)} evento(s) antigo(s) cancelado(s) durante o reagendamento de {lead_phone}")
+
                         return {
                             "success": True,
+                            "action": "agendar",
                             "date_arg": date_arg,
                             "time_arg": time_arg,
                             "summary": summary,
                             "calendar_link": cal_link,
+                            "cancelled_old": deleted_old,
                             "output": out_text
                         }
                     elif "ERRO DE CONFLITO" in out_text:
                         return {
                             "conflict": True,
+                            "action": "agendar",
                             "date_arg": date_arg,
                             "time_arg": time_arg,
                             "output": out_text
@@ -1613,6 +1715,7 @@ Retorne ESTRITAMENTE o JSON, sem nenhum texto adicional."""
                     else:
                         return {
                             "error": True,
+                            "action": "agendar",
                             "date_arg": date_arg,
                             "time_arg": time_arg,
                             "output": out_text or err_text
@@ -1666,13 +1769,38 @@ async def generate_sdr_reply(lead: dict, incoming_text: str, conversation_histor
 
     booking_directive = ""
     if booking_info:
-        if booking_info.get("success"):
-            d_str = "amanhã" if booking_info["date_arg"] in ("amanha", "amanhã") else ("hoje" if booking_info["date_arg"] == "hoje" else booking_info["date_arg"])
+        if booking_info.get("action") == "cancelar":
             booking_directive = f"""
+[STATUS CRÍTICO DO SISTEMA - AGENDAMENTO CANCELADO NO GOOGLE CALENDAR]:
+O compromisso do contato FOI EFETIVAMENTE CANCELADO e removido com sucesso da Agenda Google do Salesio a pedido dele!
+SUA OBRIGAÇÃO: Confirme diretamente com o contato que a reunião foi cancelada na agenda.
+Diga que compreende perfeitamente e que, caso queira remarcar futuramente, estaremos à disposição.
+PROIBIÇÃO TOTAL DE CARINHO OU AFETO EXCESSIVO:
+- NUNCA use 'obrigado pelo carinho', 'pelo carinho', 'um abraço', 'abraços', 'querido' ou intimidade forçada.
+- Seja cortês, profissional e direto.
+Exemplo: 'Entendido, {lead_name}! O agendamento foi cancelado na nossa agenda. Se quiser marcar em outro momento, estarei à disposição. Até logo!'
+"""
+        elif booking_info.get("success"):
+            d_str = "amanhã" if booking_info["date_arg"] in ("amanha", "amanhã") else ("hoje" if booking_info["date_arg"] == "hoje" else booking_info["date_arg"])
+            if booking_info.get("cancelled_old"):
+                booking_directive = f"""
+[STATUS CRÍTICO DO SISTEMA - REAGENDAMENTO CONFIRMADO NO GOOGLE CALENDAR]:
+O horário anterior do contato foi CANCELADO e a nova conversa foi EFETIVAMENTE CONFIRMADA na Agenda Google do Salesio para {d_str} às {booking_info['time_arg']}!
+SUA OBRIGAÇÃO: Confirme com o contato que o horário anterior foi desmarcado/cancelado e que o novo horário ({d_str} às {booking_info['time_arg']}) já está devidamente confirmado na agenda do Salesio.
+PROIBIÇÃO TOTAL DE CARINHO OU AFETO EXCESSIVO:
+- NUNCA use 'obrigado pelo carinho', 'pelo carinho', 'um abraço', 'abraços', 'querido' ou intimidade forçada.
+- Seja profissional, direto e prestativo.
+Exemplo: 'Perfeito, {lead_name}! Já atualizei a agenda: o horário anterior foi desmarcado e reservei {d_str} às {booking_info['time_arg']}. Entraremos em contato pontualmente. Até logo!'
+"""
+            else:
+                booking_directive = f"""
 [STATUS CRÍTICO DO SISTEMA - AGENDAMENTO CONFIRMADO NO GOOGLE CALENDAR]:
 O compromisso FOI EFETIVAMENTE AGENDADO E CONFIRMADO na Agenda Google do Salesio para {d_str} às {booking_info['time_arg']}!
 SUA OBRIGAÇÃO: Confirme diretamente com o contato que o horário ({d_str} às {booking_info['time_arg']}) está confirmado na agenda do Salesio e que entraremos em contato pontualmente nesse horário.
-NÃO use frases fora de lugar como 'obrigado pelo carinho'. Seja natural, profissional e caloroso (ex: 'Perfeito! Já deixei confirmado na agenda do Salesio para {d_str} às {booking_info['time_arg']}. Estaremos em contato pontualmente. Um abraço e até lá!').
+PROIBIÇÃO TOTAL DE CARINHO OU AFETO EXCESSIVO:
+- NUNCA use 'obrigado pelo carinho', 'pelo carinho', 'um abraço', 'abraços', 'querido' ou intimidade forçada.
+- Seja profissional, direto e prestativo.
+Exemplo: 'Perfeito, {lead_name}! Já deixei confirmado na agenda do Salesio para {d_str} às {booking_info['time_arg']}. Entraremos em contato pontualmente. Até logo!'
 """
         elif booking_info.get("conflict"):
             d_str = "amanhã" if booking_info["date_arg"] in ("amanha", "amanhã") else ("hoje" if booking_info["date_arg"] == "hoje" else booking_info["date_arg"])
@@ -1680,13 +1808,14 @@ NÃO use frases fora de lugar como 'obrigado pelo carinho'. Seja natural, profis
 [STATUS CRÍTICO DO SISTEMA - CONFLITO NA AGENDA GOOGLE]:
 O horário de {d_str} às {booking_info['time_arg']} JÁ ESTÁ OCUPADO na agenda do Salesio com outro compromisso!
 SUA OBRIGAÇÃO: Avise com gentileza que esse horário específico já está preenchido na agenda e sugira 2 horários alternativos próximos em horário comercial (ex: às 10h ou às 14h).
+PROIBIÇÃO DE CARINHO: NÃO use 'obrigado pelo carinho' ou 'um abraço'.
 """
 
     system_prompt = f"""Você é o Hermes, assistente virtual e consultor da equipe do Salesio Ninja.
 O Salesio Ninja é desenvolvedor e especialista em tecnologia, automação e inteligência artificial para empresas e profissionais.
 
 OBJETIVO DA INTERAÇÃO:
-- Conversar de forma 100% natural, humana, empática e prestativa em Português do Brasil no WhatsApp.
+- Conversar de forma 100% natural, ágil, educada e prestativa em Português do Brasil no WhatsApp.
 - ACOMPANHE O ASSUNTO QUE O CONTATO PUXAR! Responda com coerência ao que ele acabou de falar ou perguntar.
 
 CONTEXTO DA ABORDAGEM:
@@ -1702,19 +1831,27 @@ REGRAS OBRIGATÓRIAS DE CONVERSAÇÃO E RESPOSTA:
    Explique em 1 ou 2 frases com simpatia o que o Salesio Ninja faz: desenvolve automações com inteligência artificial, agentes inteligentes de atendimento e vendas no WhatsApp e sistemas para simplificar o dia a dia.
    NÃO force agendamento de reunião nem imponha horários na primeira resposta! Pergunte se ele tem interesse em conhecer como funciona ou se gostaria de ver um exemplo prático.
 
-2. SE O CONTATO PUXAR QUALQUER OUTRO ASSUNTO (parabenizar, perguntar valores, tirar dúvida, fazer brincadeira ou comentário):
-   Responda de acordo com o assunto que ele puxou! Nunca ignore a fala do contato para forçar um script engessado.
+2. SE O CONTATO DISSER QUE NÃO PODE OU NÃO VAI CONSEGUIR COMPARECER NO HORÁRIO (ex: "acho que não vou conseguir amanhã", "amanhã não posso", "surgiu um imprevisto"):
+   Responda de forma simples, profissional e prestativa propondo remarcar, SEM QUALQUER AGRADECIMENTO DE CARINHO:
+   "Sem problemas, {lead_name}! Podemos remarcar para outro dia ou horário que fique melhor para você. Qual dia ou horário você prefere?"
 
-3. HORÁRIOS DE REUNIÃO / CONTATO:
+3. SE O CONTATO PUXAR QUALQUER OUTRO ASSUNTO (parabenizar, perguntar valores, tirar dúvida, fazer brincadeira ou comentário):
+   Responda de acordo com o assunto que ele puxou com cordialidade profissional. Nunca ignore a fala do contato para forçar um script engessado.
+
+4. HORÁRIOS DE REUNIÃO / CONTATO:
    - NUNCA sugira horários fora do expediente comercial comum (PROIBIDO sugerir antes das 09h ou após as 18h).
    - Sugestões padrão sempre devem ser em horário comercial: ex: às 10h, 11h, 14h, 15h ou 16h.
    - NUNCA force horários se o contato apenas fez uma pergunta inicial.
 
-4. ESTILO E FORMATO DE MENSAGEM:
+5. PROIBIÇÃO ABSOLUTA DE MENSAGENS DE CARINHO E INTIMIDADE FORÇADA:
+   - PROIBIDO usar "obrigado pelo carinho", "pelo carinho", "um abraço", "grande abraço", "abraços", "querido", "amigo".
+   - NUNCA agradeça por "carinho" quando o lead remarcar, desmarcar, cancelar ou falar que não pode.
+   - O tom deve ser de consultor / assistente executivo sério e prestativo: direto, educado, sem intimidade falsa ou pieguice.
+   - Use no máximo 1 emoji leve (ex: 😊, 👍).
+
+6. ESTILO E FORMATO DE MENSAGEM:
    - MÁXIMO DE 2 A 3 FRASES CURTAS! O WhatsApp é rápido e dinâmico, proibido textão ou parágrafos longos.
-   - Use tom cordial, profissional e descontraído de um brasileiro real.
-   - PROIBIDO usar clichês robóticos como "obrigado pelo carinho" ou "estou aqui para lhe servir".
-   - Use no máximo 1 emoji leve (ex: 😊, 👍, ✨).
+   - Use tom cordial, profissional e dinâmico de um brasileiro real no ambiente de trabalho.
 """
 
     messages = [{"role": "system", "content": system_prompt}]
@@ -1763,14 +1900,23 @@ async def process_lead_inbound_response(lead: dict, incoming_text: str, target_c
     
     target_jid = target_chat_id if ("@" in target_chat_id) else f"{phone}@s.whatsapp.net"
 
-    # 1. OPT-OUT CHECK
+    # 1. OPT-OUT CHECK (Strict: NEVER trigger on meeting cancellations or scheduling)
+    is_calendar_talk = any(w in lower for w in (
+        "reunião", "reuniao", "agendamento", "agendar", "reagendar", "desmarcar", "desmarca",
+        "horário", "horario", "horas", "amanhã", "amanha", "hoje", "conversa", "call", "encontro",
+        "remarcar", "remarca", "marcar"
+    ))
+
     OPT_OUT_KEYWORDS = (
         "não quero", "nao quero", "pare", "remover", "spam", "stop", "bloquear",
-        "nao tenho interesse", "não tenho interesse", "retire meu", "cancela", "cancelar",
+        "nao tenho interesse", "não tenho interesse", "retire meu",
         "não obrigado", "nao obrigado", "não, obrigado", "nao precisa", "não precisa",
-        "número errado", "numero errado", "engano", "errou o número", "errou o numero"
+        "número errado", "numero errado", "engano", "errou o número", "errou o numero",
+        "cancela meu contato", "cancelar meu contato", "cancelar cadastro", "cancelar mensagens",
+        "cancela mensagens", "cancela meu número", "cancela meu numero", "sair da lista",
+        "me tira da lista", "tirar da lista"
     )
-    if any(w in lower for w in OPT_OUT_KEYWORDS):
+    if not is_calendar_talk and any(w in lower for w in OPT_OUT_KEYWORDS):
         with get_db() as conn:
             conn.execute("UPDATE leads SET status = 'OPT_OUT', response = ?, response_at = ? WHERE id = ?", (incoming_text, now_iso, lead_id))
             conn.execute("INSERT OR IGNORE INTO blacklist (phone, reason, created_at) VALUES (?, ?, ?)", (phone, "Opt-out solicitado", now_iso))
@@ -1875,11 +2021,11 @@ async def process_lead_inbound_response(lead: dict, incoming_text: str, target_c
         elif any(k in lower for k in ("fim de semana", "final de semana", "fds")):
             ai_reply = "Obrigado, igualmente! Tenha um excelente final de semana! 🎉"
         elif any(k in lower for k in ("obrigad", "valeu", "agradeço")):
-            ai_reply = "Por nada! Fico à disposição. Tenha um ótimo dia! ✨"
+            ai_reply = "Por nada! Fico à disposição. Tenha um ótimo dia! 👍"
         elif any(k in lower for k in ("combinado", "beleza", "ok", "perfeito", "tranquilo", "certo")):
-            ai_reply = "Combinado então! Um grande abraço e fico à disposição! 👍"
+            ai_reply = "Combinado então! Qualquer dúvida fico à disposição. Até logo! 👍"
         else:
-            ai_reply = "Combinado! Tenha um excelente dia e fico à disposição! 😊"
+            ai_reply = "Combinado! Tenha um excelente dia e fico à disposição! 👍"
     elif is_simple_greeting:
         print(f"[Hermes SDR] Saudação simples detectada de {phone}: '{incoming_text}'. Respondendo naturalmente sem despejar pitch.")
         if history_list and any(m.get("role") == "assistant" for m in history_list):
@@ -1909,8 +2055,15 @@ async def process_lead_inbound_response(lead: dict, incoming_text: str, target_c
             print(f"[Hermes SDR] Falha ao enviar resposta IA: {res.text}")
 
     now_reply_iso = datetime.now().isoformat()
-    is_schedule = (booking_res and booking_res.get("success")) or any(w in lower for w in ("marcar", "agendar", "reunião", "reuniao", "horário", "horario", "pode ser", "vamos"))
-    new_status = "SCHEDULED" if (booking_res and booking_res.get("success")) else ("SCHEDULED" if is_schedule else "REPLIED")
+    if booking_res and booking_res.get("success"):
+        if booking_res.get("action") == "cancelar":
+            new_status = "REPLIED"
+        else:
+            new_status = "SCHEDULED"
+    elif any(w in lower for w in ("marcar", "agendar", "reunião", "reuniao", "horário", "horario", "pode ser")):
+        new_status = "SCHEDULED"
+    else:
+        new_status = "REPLIED"
 
     with get_db() as conn:
         conn.execute("""
@@ -1942,9 +2095,16 @@ async def process_lead_inbound_response(lead: dict, incoming_text: str, target_c
     # 5. Alert Salesio Ninja on WhatsApp
     extra_cal_info = ""
     if booking_res and booking_res.get("success"):
-        status_header = "📅 *NOVO COMPROMISSO AGENDADO NO GOOGLE CALENDAR!*"
-        extra_cal_info = f"🕐 *Horário Marcado:* {booking_res['date_arg']} às {booking_res['time_arg']}\n🔗 *Link:* {booking_res.get('calendar_link') or 'Agenda Google (suporteninja1@gmail.com)'}\n"
-    elif is_schedule:
+        if booking_res.get("action") == "cancelar":
+            status_header = "🚫 *COMPROMISSO CANCELADO NO GOOGLE CALENDAR!*"
+            extra_cal_info = f"❌ *Reunião de {booking_res.get('date_arg', '')} {booking_res.get('time_arg', '')} foi removida da agenda*\n"
+        elif booking_res.get("cancelled_old"):
+            status_header = "🔄 *COMPROMISSO REAGENDADO NO GOOGLE CALENDAR!*"
+            extra_cal_info = f"🕐 *Novo Horário:* {booking_res['date_arg']} às {booking_res['time_arg']}\n🗑️ *Horário anterior desmarcado com sucesso*\n🔗 *Link:* {booking_res.get('calendar_link') or 'Agenda Google (suporteninja1@gmail.com)'}\n"
+        else:
+            status_header = "📅 *NOVO COMPROMISSO AGENDADO NO GOOGLE CALENDAR!*"
+            extra_cal_info = f"🕐 *Horário Marcado:* {booking_res['date_arg']} às {booking_res['time_arg']}\n🔗 *Link:* {booking_res.get('calendar_link') or 'Agenda Google (suporteninja1@gmail.com)'}\n"
+    elif new_status == "SCHEDULED":
         status_header = "📅 *LEAD INTERESSADO EM AGENDAR!*"
     else:
         status_header = "🔥 *HERMES SDR CONVERSANDO COM LEAD!*"

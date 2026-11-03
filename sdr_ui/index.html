@@ -526,12 +526,20 @@
       <!-- Left: Campaign Selector List (5 cols on desktop, tab on mobile) -->
       <div v-show="mobileTab === 'campaigns' || isDesktop" 
            class="lg:col-span-5 glass rounded-xl sm:rounded-2xl p-4 sm:p-5 border border-slate-800 flex flex-col">
-        <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <h2 class="text-sm font-bold text-white flex items-center space-x-2">
             <i data-lucide="layers" class="w-4 h-4 text-emerald-400"></i>
             <span>Segmentações & Campanhas</span>
           </h2>
-          <span class="text-xs text-slate-400">{{ campaigns.length }} listas</span>
+          <div class="flex items-center space-x-2">
+            <span class="text-xs text-slate-400">{{ campaigns.length }} listas</span>
+            <button @click="openNewCampaignModal" 
+                    class="px-2.5 py-1 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors flex items-center space-x-1 shadow-sm active:scale-95"
+                    title="Criar nova campanha e fazer upload de planilha CSV">
+              <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+              <span>+ Nova Lista (CSV)</span>
+            </button>
+          </div>
         </div>
 
         <div class="space-y-2 overflow-y-auto max-h-[380px] sm:max-h-[460px] pr-1">
@@ -1230,6 +1238,115 @@
               <span>{{ scheduleSending ? 'Agendando...' : 'Confirmar Agendamento' }}</span>
             </button>
           </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MODAL DE CRIAR NOVA CAMPANHA / UPLOAD CSV -->
+    <div v-if="isNewCampaignModalOpen" 
+         class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm transition-opacity">
+      <div class="glass border border-slate-700/80 rounded-t-2xl sm:rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[90vh]">
+        
+        <!-- Header -->
+        <div class="px-4 sm:px-6 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20 shrink-0">
+              <i data-lucide="plus-circle" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h3 class="text-sm font-bold text-white">Criar Nova Campanha & Subir Lista</h3>
+              <p class="text-[11px] text-slate-400">Importe contatos via CSV para prospecção com Hermes SDR</p>
+            </div>
+          </div>
+          <button @click="isNewCampaignModalOpen = false" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <!-- Body -->
+        <div class="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs">
+          <!-- Nome da Campanha -->
+          <div>
+            <label class="block text-slate-300 font-semibold mb-1">Nome da Campanha / Segmentação *</label>
+            <input v-model="newCampName" type="text" placeholder="Ex: Professores Salto do Lontra, Dentistas Francisco Beltrão..."
+                   class="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-xs">
+          </div>
+
+          <!-- Categoria & Nicho -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-slate-300 font-semibold mb-1">Categoria</label>
+              <input v-model="newCampCategory" type="text" placeholder="Ex: Educação, Odontologia..."
+                     class="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-xs">
+            </div>
+            <div>
+              <label class="block text-slate-300 font-semibold mb-1">Total de Leads Carregados</label>
+              <div class="px-3 py-2 rounded-xl bg-slate-900/50 border border-slate-800 text-emerald-400 font-bold flex items-center justify-between">
+                <span>{{ newCampLeads.length }} leads</span>
+                <span v-if="newCampLeads.length > 0" class="text-[10px] text-slate-400">Prontos</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Upload CSV -->
+          <div>
+            <label class="block text-slate-300 font-semibold mb-1">Arquivo CSV de Contatos *</label>
+            <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-xl p-4 text-center bg-slate-900/40 transition-colors cursor-pointer relative">
+              <input type="file" accept=".csv,text/csv,text/plain" @change="handleCsvFileUpload"
+                     class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+              <div class="flex flex-col items-center justify-center space-y-1">
+                <i data-lucide="upload-cloud" class="w-8 h-8 text-emerald-400"></i>
+                <p class="font-bold text-slate-200 text-xs">
+                  {{ newCampFileName ? newCampFileName : 'Clique aqui para selecionar seu CSV' }}
+                </p>
+                <p class="text-[10px] text-slate-400">Aceita colunas como "telefone", "nome", "cidade", "nicho" (separador vírgula ou ponto-e-vírgula)</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Previews dos primeiros 3 contatos carregados -->
+          <div v-if="newCampLeads.length > 0" class="p-3 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1.5">
+            <div class="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+              <span>Prévia dos Contatos (3 primeiros de {{ newCampLeads.length }}):</span>
+              <span class="text-emerald-400 text-[10px]">{{ newCampLeads.length }} válidos</span>
+            </div>
+            <div v-for="(lead, idx) in newCampLeads.slice(0, 3)" :key="idx" class="text-[11px] text-slate-400 flex items-center justify-between bg-slate-950/40 px-2 py-1 rounded">
+              <span class="text-slate-200 font-medium truncate max-w-[150px]">{{ lead.name }}</span>
+              <span class="font-mono text-emerald-400">+{{ lead.phone }}</span>
+              <span class="text-slate-500 text-[10px] truncate max-w-[120px]">{{ lead.city || lead.niche || '—' }}</span>
+            </div>
+          </div>
+
+          <!-- Template Inicial de Mensagem -->
+          <div>
+            <label class="block text-slate-300 font-semibold mb-1">Mensagem Inicial (Template com Spintax)</label>
+            <textarea v-model="newCampTemplate" rows="3" placeholder="{Olá|Oi} {nome}, tudo bem? Aqui é o Salesio..."
+                      class="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 text-xs font-mono"></textarea>
+            <p class="text-[10px] text-slate-400 mt-0.5">Dica: Use {nome} para o nome do contato e {Olá|Oi|Bom dia} para variar o texto e evitar bloqueios.</p>
+          </div>
+
+          <!-- Alert de Erro ou Sucesso -->
+          <div v-if="newCampError" class="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center space-x-2">
+            <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>
+            <span>{{ newCampError }}</span>
+          </div>
+          <div v-if="newCampSuccess" class="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center space-x-2">
+            <i data-lucide="check-circle" class="w-4 h-4 shrink-0"></i>
+            <span>{{ newCampSuccess }}</span>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-4 sm:px-6 py-3 border-t border-slate-800 bg-slate-900/80 flex items-center justify-end space-x-2">
+          <button @click="isNewCampaignModalOpen = false" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition">
+            Cancelar
+          </button>
+          <button @click="submitCreateCampaign" :disabled="newCampLoading || newCampLeads.length === 0 || !newCampName"
+                  class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold text-xs tracking-wide shadow-lg transition flex items-center space-x-1.5">
+            <i data-lucide="check" class="w-3.5 h-3.5" :class="{'animate-spin': newCampLoading}"></i>
+            <span>{{ newCampLoading ? 'Importando Leads...' : 'Criar e Salvar Campanha' }}</span>
+          </button>
         </div>
 
       </div>
@@ -2177,6 +2294,16 @@
         manualImmediate: true,
         manualSending: false,
         manualResults: [],
+        // Create Custom Campaign State
+        isNewCampaignModalOpen: false,
+        newCampName: '',
+        newCampCategory: 'Professores',
+        newCampTemplate: '{Olá|Oi} {nome}, tudo bem? Aqui é o Salesio.',
+        newCampFileName: '',
+        newCampLeads: [],
+        newCampLoading: false,
+        newCampError: '',
+        newCampSuccess: '',
         // Schedule Dispatches State
         isScheduleModalOpen: false,
         schedulePhone: '',
@@ -2498,6 +2625,129 @@
       } finally {
         this.conversationLoading = false;
         this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+      }
+    },
+    openNewCampaignModal() {
+      this.isNewCampaignModalOpen = true;
+      this.newCampName = '';
+      this.newCampCategory = 'Professores';
+      this.newCampTemplate = '{Olá|Oi} {nome}, tudo bem? Aqui é o Salesio.';
+      this.newCampFileName = '';
+      this.newCampLeads = [];
+      this.newCampError = '';
+      this.newCampSuccess = '';
+      this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    },
+    handleCsvFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      this.newCampFileName = file.name;
+      this.newCampError = '';
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const text = e.target.result;
+          const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+          if (lines.length === 0) {
+            this.newCampError = 'O arquivo CSV está vazio.';
+            return;
+          }
+          
+          const firstLine = lines[0];
+          const sep = firstLine.includes(';') ? ';' : ',';
+          const headers = firstLine.split(sep).map(h => h.trim().toLowerCase().replace(/["']/g, ''));
+          
+          let phoneIdx = headers.findIndex(h => h.includes('phone') || h.includes('telefone') || h.includes('celular') || h.includes('whatsapp') || h.includes('numero'));
+          let nameIdx = headers.findIndex(h => h.includes('name') || h.includes('nome') || h.includes('contato'));
+          let cityIdx = headers.findIndex(h => h.includes('city') || h.includes('cidade') || h.includes('municipio'));
+          let nicheIdx = headers.findIndex(h => h.includes('niche') || h.includes('nicho') || h.includes('cargo') || h.includes('grupo') || h.includes('categoria'));
+
+          let startIdx = 1;
+          if (phoneIdx === -1) {
+            const hasDigits0 = /\d{8,}/.test(firstLine.split(sep)[0]);
+            const hasDigits1 = firstLine.split(sep)[1] && /\d{8,}/.test(firstLine.split(sep)[1]);
+            if (hasDigits0 || hasDigits1) {
+              phoneIdx = hasDigits0 ? 0 : 1;
+              nameIdx = hasDigits0 ? 1 : 0;
+              startIdx = 0;
+            } else {
+              this.newCampError = 'Não foi possível identificar a coluna de telefone (procuramos por "telefone", "phone", "celular", "numero").';
+              return;
+            }
+          }
+
+          const parsed = [];
+          for (let i = startIdx; i < lines.length; i++) {
+            const row = lines[i].split(sep).map(c => c.trim().replace(/^["']|["']$/g, ''));
+            const phone = row[phoneIdx] || '';
+            const name = (nameIdx >= 0 && row[nameIdx]) ? row[nameIdx] : 'Contato';
+            const city = (cityIdx >= 0 && row[cityIdx]) ? row[cityIdx] : '';
+            const niche = (nicheIdx >= 0 && row[nicheIdx]) ? row[nicheIdx] : '';
+            
+            const cleanDigits = phone.replace(/\D/g, '');
+            if (cleanDigits.length >= 8) {
+              parsed.push({ phone: cleanDigits, name, city, niche });
+            }
+          }
+
+          if (parsed.length === 0) {
+            this.newCampError = 'Nenhum contato com número de telefone válido encontrado no CSV.';
+            return;
+          }
+
+          this.newCampLeads = parsed;
+          if (!this.newCampName) {
+            this.newCampName = file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, ' ');
+          }
+        } catch (err) {
+          this.newCampError = 'Erro ao processar o arquivo CSV: ' + err.message;
+        }
+      };
+      reader.readAsText(file);
+    },
+    async submitCreateCampaign() {
+      if (!this.newCampName) {
+        this.newCampError = 'Informe o nome da campanha.';
+        return;
+      }
+      if (this.newCampLeads.length === 0) {
+        this.newCampError = 'Nenhum lead carregado. Selecione um arquivo CSV com telefones.';
+        return;
+      }
+      this.newCampLoading = true;
+      this.newCampError = '';
+      this.newCampSuccess = '';
+      
+      try {
+        const res = await fetch('/painel/api/campaigns/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: this.newCampName,
+            category: this.newCampCategory || 'Geral',
+            template: this.newCampTemplate,
+            leads: this.newCampLeads
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          this.newCampSuccess = `Campanha criada com sucesso! ${data.inserted} novos leads importados.`;
+          await this.loadCampaigns();
+          setTimeout(() => {
+            this.isNewCampaignModalOpen = false;
+            const found = this.campaigns.find(c => c.slug === data.slug);
+            if (found) {
+              this.selectCampaign(found);
+            }
+          }, 1200);
+        } else {
+          this.newCampError = data.detail || 'Erro ao criar campanha.';
+        }
+      } catch (e) {
+        this.newCampError = 'Falha de conexão com o servidor: ' + e.message;
+      } finally {
+        this.newCampLoading = false;
       }
     },
     openManualModal() {

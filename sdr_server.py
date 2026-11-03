@@ -878,6 +878,62 @@ async def get_campaigns():
             })
     return res
 
+class CreateCampaignPayload(BaseModel):
+    name: str
+    category: Optional[str] = "Geral"
+    template: Optional[str] = ""
+    leads: List[dict]
+
+@app.post("/painel/api/campaigns/create")
+async def create_custom_campaign(payload: CreateCampaignPayload):
+    if not payload.name:
+        raise HTTPException(status_code=400, detail="Nome da campanha é obrigatório.")
+    
+    raw_slug = re.sub(r'[^a-zA-Z0-9_]+', '_', unicodedata.normalize('NFKD', payload.name).encode('ascii', 'ignore').decode('utf-8').lower()).strip('_')
+    slug = f"camp_{raw_slug}" if not raw_slug.startswith("camp_") else raw_slug
+    now_iso = datetime.now().isoformat()
+    default_tmpl = payload.template or "{Olá|Oi}{nome}, tudo bem? Aqui é o Salesio. Como posso te ajudar?"
+    
+    with get_db() as conn:
+        conn.execute("""
+        INSERT INTO campaigns (slug, name, category, source_folder, message_template, created_at)
+        VALUES (?, ?, ?, 'manual_upload', ?, ?)
+        ON CONFLICT(slug) DO UPDATE SET 
+            name = excluded.name,
+            category = excluded.category,
+            message_template = excluded.message_template
+        """, (slug, payload.name, payload.category or "Geral", default_tmpl, now_iso))
+        
+        inserted = 0
+        for item in payload.leads:
+            raw_phone = item.get("phone", "")
+            lead_name = item.get("name", "Contato") or "Contato"
+            city = item.get("city", "")
+            niche = item.get("niche", "")
+            
+            digits = re.sub(r'\D', '', str(raw_phone))
+            if len(digits) in (10, 11) and not digits.startswith("55"):
+                digits = "55" + digits
+            
+            if 12 <= len(digits) <= 14:
+                conn.execute("""
+                INSERT OR IGNORE INTO leads 
+                (campaign_slug, phone, name, category, city, niche, source_file, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'manual_upload', 'PENDING', ?)
+                """, (slug, digits, lead_name, payload.category or "Geral", city, niche, now_iso))
+                if conn.total_changes:
+                    inserted += 1
+        
+        conn.commit()
+    
+    return {
+        "success": True, 
+        "slug": slug, 
+        "name": payload.name, 
+        "total_leads_received": len(payload.leads),
+        "inserted": inserted
+    }
+
 class ControlPayload(BaseModel):
     action: str  # start, pause, toggle_dry_run, sync_leads
     campaign_slug: Optional[str] = None

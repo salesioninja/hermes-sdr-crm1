@@ -1472,10 +1472,161 @@ def find_lead_by_phone(conn, raw_phone: str):
     lead = conn.execute(sql, params).fetchone()
     return lead
 
-async def generate_sdr_reply(lead: dict, incoming_text: str, conversation_history: list) -> str:
+def resolve_date_arg(date_str: str) -> str:
+    tz_br = timezone(timedelta(hours=-3))
+    now = datetime.now(tz_br).date()
+    d = str(date_str).lower().strip()
+    if d in ('hoje', 'today'):
+        return 'hoje'
+    if d in ('amanha', 'amanhã', 'tomorrow'):
+        return 'amanha'
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', d):
+        return d
+    
+    weekdays = {
+        'segunda': 0, 'seg': 0,
+        'terca': 1, 'terça': 1, 'ter': 1,
+        'quarta': 2, 'qua': 2,
+        'quinta': 3, 'qui': 3,
+        'sexta': 4, 'sex': 4,
+        'sabado': 5, 'sábado': 5, 'sab': 5,
+        'domingo': 6, 'dom': 6
+    }
+    for name, wd in weekdays.items():
+        if name in d:
+            days_ahead = (wd - now.weekday()) % 7
+            if days_ahead == 0:
+                days_ahead = 7
+            target = now + timedelta(days=days_ahead)
+            return target.isoformat()
+    return d
+
+async def check_and_execute_calendar_booking(incoming_text: str, conversation_history: list, lead_name: str, lead_phone: str) -> Optional[dict]:
+    """
+    Detects if the lead confirmed or requested an appointment / call / meeting.
+    Extracts date and time, then executes Google Calendar CLI to actually book the event.
+    """
+    lower = incoming_text.lower()
+    SCHED_KEYWORDS = (
+        "reagendar", "agendar", "marcar", "às", "as ", "horas", "horário", "horario",
+        "amanhã", "amanha", "hoje", "segunda", "terça", "terca", "quarta", "quinta", "sexta",
+        "pode ser", "vamos marcar", "vamos reagendar", "vamos agendar", "combinado às", "combinado as",
+        "da manhã", "da tarde", "da manha", "da noite"
+    )
+    if not any(k in lower for k in SCHED_KEYWORDS):
+        return None
+
+    tz_br = timezone(timedelta(hours=-3))
+    now_br = datetime.now(tz_br)
+    now_str = now_br.strftime("%A, %d/%m/%Y, horário atual: %H:%M")
+
+    recent_msgs = []
+    for m in conversation_history[-4:]:
+        role = "Lead" if m.get("role") == "lead" else "Hermes"
+        recent_msgs.append(f"{role}: {m.get('message', '')}")
+    history_snippet = "\n".join(recent_msgs)
+
+    extract_system = f"""Você é um extrator especializado em identificar intenções de agendamento em conversas de WhatsApp no Brasil.
+Data e horário de referência de hoje: {now_str}.
+
+Tarefa: Analisar a mensagem do lead e o histórico para verificar se o lead ESCOLHEU, CONFIRMOU ou PEDIU PARA AGENDAR/REAGENDAR uma data e horário de conversa, call ou reunião.
+
+Regras:
+1. Se o lead propôs ou confirmou data e horário (ex: "quero reagendar para as 08 horas de amanhã", "pode ser amanhã às 15h", "vamos marcar hoje às 16h", "quinta às 10h"):
+   Retorne APENAS um JSON no formato:
+   {{
+     "is_booking": true,
+     "date_arg": "amanha" (ou "hoje" ou no formato "YYYY-MM-DD" se for outro dia da semana/mês),
+     "time_arg": "08:00" (formato HH:MM 24 horas, ex: 08:00, 14:30),
+     "action": "agendar"
+   }}
+2. Se o lead NÃO definiu nem confirmou dia e horário (por exemplo, só perguntou "o que você faz?", "quem é você?", "quanto custa?", ou agradeceu sem marcar hora):
+   Retorne APENAS:
+   {{
+     "is_booking": false
+   }}
+
+Retorne ESTRITAMENTE o JSON, sem nenhum texto adicional."""
+
+    user_prompt = f"Histórico recente da conversa:\n{history_snippet}\n\nÚltima mensagem do lead:\n\"{incoming_text}\""
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": OPENROUTER_MODEL,
+                    "messages": [
+                        {"role": "system", "content": extract_system},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "temperature": 0.1,
+                    "max_tokens": 120
+                }
+            )
+            if resp.status_code == 200:
+                raw_txt = resp.json()["choices"][0]["message"]["content"].strip()
+                clean_json = re.sub(r'^```json\s*|^```\s*|```$', '', raw_txt, flags=re.MULTILINE).strip()
+                parsed = json.loads(clean_json)
+                if parsed.get("is_booking"):
+                    date_arg = resolve_date_arg(parsed.get("date_arg", "amanha"))
+                    time_arg = parsed.get("time_arg", "10:00")
+                    if ":" not in time_arg:
+                        time_arg = f"{int(time_arg):02d}:00"
+                    
+                    summary = f"Reunião: {lead_name} (+{lead_phone})"
+                    cal_script = "/opt/data/hermes_calendar.py" if os.path.exists("/opt/data/hermes_calendar.py") else "hermes_calendar.py"
+                    cmd = f"python3 {cal_script} add '{summary}' '{time_arg}' '{date_arg}' 30"
+                    
+                    proc = await asyncio.create_subprocess_shell(
+                        cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await proc.communicate()
+                    out_text = stdout.decode("utf-8", errors="replace").strip()
+                    err_text = stderr.decode("utf-8", errors="replace").strip()
+                    print(f"[Hermes SDR Calendar] Comando: {cmd} -> Saída: {out_text} | Erro: {err_text}")
+                    
+                    if "SUCESSO" in out_text:
+                        link_match = re.search(r'Link:\s*(https://\S+)', out_text)
+                        cal_link = link_match.group(1) if link_match else ""
+                        return {
+                            "success": True,
+                            "date_arg": date_arg,
+                            "time_arg": time_arg,
+                            "summary": summary,
+                            "calendar_link": cal_link,
+                            "output": out_text
+                        }
+                    elif "ERRO DE CONFLITO" in out_text:
+                        return {
+                            "conflict": True,
+                            "date_arg": date_arg,
+                            "time_arg": time_arg,
+                            "output": out_text
+                        }
+                    else:
+                        return {
+                            "error": True,
+                            "date_arg": date_arg,
+                            "time_arg": time_arg,
+                            "output": out_text or err_text
+                        }
+    except Exception as e:
+        print(f"[Hermes SDR Calendar] Exceção no agendador automático: {e}")
+
+    return None
+
+async def generate_sdr_reply(lead: dict, incoming_text: str, conversation_history: list, booking_info: Optional[dict] = None) -> str:
     lead_name = lead.get("name") or "Lead"
     lead_phone = lead.get("phone") or ""
     camp_slug = lead.get("campaign_slug") or "prospeccao"
+    sent_msg = lead.get("message_sent", "")
 
     camp_name = camp_slug
     camp_cat = "Geral"
@@ -1501,53 +1652,69 @@ async def generate_sdr_reply(lead: dict, incoming_text: str, conversation_histor
     except Exception:
         pass
 
-    sent_msg = lead.get("message_sent", "")
+    # Dynamic Persona & Context
     combined_ctx = f"{camp_name} {camp_cat} {sent_msg}".lower()
 
     if any(k in combined_ctx for k in ("fisioterap", "osteopat", "coluna", "postural", "dor", "dores", "saúde", "saude")):
-        persona_role = "assistente virtual de atendimento da clínica de Fisioterapia e Osteopatia em Salto do Lontra"
-        persona_goal = (
-            "Seu objetivo é acolher o contato com gentileza e empatia, esclarecer dúvidas sobre alívio de dores "
-            "(coluna, lombar, pescoço, tensão postural e muscular) e convidá-lo a agendar uma avaliação postural "
-            "ou sessão de alívio presencial. Não prescreva remédios; foque no acolhimento de dores e agendamento da avaliação."
-        )
-        extra_rules = """3. Se o contato perguntou "quem é?", "onde fica?" ou "como funciona?", explique com simpatia que você é da clínica de Fisioterapia e Osteopatia em Salto do Lontra e que estão realizando avaliações posturais e alívio de dores na coluna e rotina de trabalho.
-4. Se o contato perguntar valores/preços: informe com simpatia que o valor varia conforme a queixa e avaliação individual, mencione que estão com condições especiais esta semana e pergunte se ele prefere agendar pela manhã ou tarde."""
+        niche_focus = "Clínica de Fisioterapia e Osteopatia em Salto do Lontra (avaliações posturais e alívio de dores na coluna e rotina de trabalho)."
     elif any(k in combined_ctx for k in ("dentist", "odonto")):
-        persona_role = "assistente de atendimento odontológico"
-        persona_goal = "Seu objetivo é esclarecer dúvidas com simpatia e agendar uma avaliação odontológica."
-        extra_rules = """3. Se o contato perguntou sobre serviços, explique com simpatia os cuidados e convide para uma avaliação.
-4. Se perguntar preço, explique que depende da avaliação clínica e convide para agendar um horário."""
-    elif any(k in combined_ctx for k in ("professor", "educaç", "educac", "escola", "seed", "bncc")):
-        persona_role = "consultor executivo da equipe do Salesio Ninja (especialista em inteligência artificial e assistentes pedagógicos para BNCC no Paraná)"
-        persona_goal = "Seu objetivo é demonstrar como professores e gestores economizam mais de 10 horas semanais com IA e agendar um bate-papo rápido de 10 minutos."
-        extra_rules = """3. Se o contato perguntou "quem é?" ou "como funciona?", explique em 1 frase o benefício da IA pedagógica e convide para um bate-papo de 10 minutos amanhã."""
+        niche_focus = "Atendimento odontológico e cuidados com a saúde bucal."
+    elif any(k in combined_ctx for k in ("professor", "educaç", "educac", "escola", "seed", "bncc")) and camp_slug != "lotes_manual_test":
+        niche_focus = "Inteligência artificial e assistentes pedagógicos para professores e gestores economizarem tempo com planejamento e BNCC."
     else:
-        persona_role = f"assistente de relacionamento da campanha '{camp_name}'"
-        persona_goal = f"Seu objetivo é manter uma conversa natural e coerente com a abordagem inicial enviada ('{sent_msg}'), tirar dúvidas e encaminhar para um agendamento ou próximo passo."
-        extra_rules = """3. Se o contato perguntar sobre a mensagem, responda com coerência em relação ao que foi enviado e convide para conversar."""
+        niche_focus = "Soluções de inteligência artificial, automação comercial e sistemas inteligentes de atendimento e CRM no WhatsApp desenvolvidas pelo Salesio Ninja."
 
-    system_prompt = f"""Você é o {persona_role}.
+    booking_directive = ""
+    if booking_info:
+        if booking_info.get("success"):
+            d_str = "amanhã" if booking_info["date_arg"] in ("amanha", "amanhã") else ("hoje" if booking_info["date_arg"] == "hoje" else booking_info["date_arg"])
+            booking_directive = f"""
+[STATUS CRÍTICO DO SISTEMA - AGENDAMENTO CONFIRMADO NO GOOGLE CALENDAR]:
+O compromisso FOI EFETIVAMENTE AGENDADO E CONFIRMADO na Agenda Google do Salesio para {d_str} às {booking_info['time_arg']}!
+SUA OBRIGAÇÃO: Confirme diretamente com o contato que o horário ({d_str} às {booking_info['time_arg']}) está confirmado na agenda do Salesio e que entraremos em contato pontualmente nesse horário.
+NÃO use frases fora de lugar como 'obrigado pelo carinho'. Seja natural, profissional e caloroso (ex: 'Perfeito! Já deixei confirmado na agenda do Salesio para {d_str} às {booking_info['time_arg']}. Estaremos em contato pontualmente. Um abraço e até lá!').
+"""
+        elif booking_info.get("conflict"):
+            d_str = "amanhã" if booking_info["date_arg"] in ("amanha", "amanhã") else ("hoje" if booking_info["date_arg"] == "hoje" else booking_info["date_arg"])
+            booking_directive = f"""
+[STATUS CRÍTICO DO SISTEMA - CONFLITO NA AGENDA GOOGLE]:
+O horário de {d_str} às {booking_info['time_arg']} JÁ ESTÁ OCUPADO na agenda do Salesio com outro compromisso!
+SUA OBRIGAÇÃO: Avise com gentileza que esse horário específico já está preenchido na agenda e sugira 2 horários alternativos próximos em horário comercial (ex: às 10h ou às 14h).
+"""
 
-OBJETIVO DA SUA INTERAÇÃO:
-{persona_goal}
+    system_prompt = f"""Você é o Hermes, assistente virtual e consultor da equipe do Salesio Ninja.
+O Salesio Ninja é desenvolvedor e especialista em tecnologia, automação e inteligência artificial para empresas e profissionais.
 
-CONTEXTO DO CONTATO:
-- Nome: {lead_name}
-- Telefone: {lead_phone}
-- Nicho / Segmento: {camp_name} ({camp_cat})
+OBJETIVO DA INTERAÇÃO:
+- Conversar de forma 100% natural, humana, empática e prestativa em Português do Brasil no WhatsApp.
+- ACOMPANHE O ASSUNTO QUE O CONTATO PUXAR! Responda com coerência ao que ele acabou de falar ou perguntar.
+
+CONTEXTO DA ABORDAGEM:
+- Nome do contato: {lead_name}
+- Foco da mensagem/nicho: {niche_focus}
 - Mensagem inicial que enviamos: "{sent_msg}"
-- Próximos compromissos na agenda do Salesio:
+- Agenda do Salesio:
 {cal_info}
+{booking_directive}
 
-REGRAS OBRIGATÓRIAS DE COMUNICAÇÃO:
-1. Seja caloroso, empático, natural e muito objetivo, com tom de WhatsApp corporativo brasileiro.
-2. MÁXIMO DE 2 A 3 FRASES CURTAS! Proibido textão ou listas quilométricas.
-{extra_rules}
-5. Se o contato aceitou conversar ou perguntou horários, sugira opções (ex: "Amanhã às 10h ou no início da tarde às 14h ficaria bom para você?").
-6. Se o contato confirmou um dia e horário exato (ex: "pode ser amanhã às 15h"), confirme com entusiasmo e informe que o atendimento ou contato será realizado pontualmente nesse horário.
-7. Nunca invente promessas absurdas ou técnicas mirabolantes.
-8. Use no máximo 1 ou 2 emojis leves (ex: 👋, 😊, ✨).
+REGRAS OBRIGATÓRIAS DE CONVERSAÇÃO E RESPOSTA:
+1. SE O CONTATO PERGUNTAR "O QUE VOCÊ FAZ?", "QUEM É VOCÊ?" OU "COMO FUNCIONA?":
+   Explique em 1 ou 2 frases com simpatia o que o Salesio Ninja faz: desenvolve automações com inteligência artificial, agentes inteligentes de atendimento e vendas no WhatsApp e sistemas para simplificar o dia a dia.
+   NÃO force agendamento de reunião nem imponha horários na primeira resposta! Pergunte se ele tem interesse em conhecer como funciona ou se gostaria de ver um exemplo prático.
+
+2. SE O CONTATO PUXAR QUALQUER OUTRO ASSUNTO (parabenizar, perguntar valores, tirar dúvida, fazer brincadeira ou comentário):
+   Responda de acordo com o assunto que ele puxou! Nunca ignore a fala do contato para forçar um script engessado.
+
+3. HORÁRIOS DE REUNIÃO / CONTATO:
+   - NUNCA sugira horários fora do expediente comercial comum (PROIBIDO sugerir antes das 09h ou após as 18h).
+   - Sugestões padrão sempre devem ser em horário comercial: ex: às 10h, 11h, 14h, 15h ou 16h.
+   - NUNCA force horários se o contato apenas fez uma pergunta inicial.
+
+4. ESTILO E FORMATO DE MENSAGEM:
+   - MÁXIMO DE 2 A 3 FRASES CURTAS! O WhatsApp é rápido e dinâmico, proibido textão ou parágrafos longos.
+   - Use tom cordial, profissional e descontraído de um brasileiro real.
+   - PROIBIDO usar clichês robóticos como "obrigado pelo carinho" ou "estou aqui para lhe servir".
+   - Use no máximo 1 emoji leve (ex: 😊, 👍, ✨).
 """
 
     messages = [{"role": "system", "content": system_prompt}]
@@ -1569,7 +1736,7 @@ REGRAS OBRIGATÓRIAS DE COMUNICAÇÃO:
                 json={
                     "model": OPENROUTER_MODEL,
                     "messages": messages,
-                    "temperature": 0.7,
+                    "temperature": 0.6,
                     "max_tokens": 250
                 }
             )
@@ -1584,7 +1751,7 @@ REGRAS OBRIGATÓRIAS DE COMUNICAÇÃO:
         print(f"[Hermes SDR] Exceção chamando OpenRouter: {e}")
 
     # Fallback natural
-    return f"Olá {lead_name}! O Salesio Ninja atua com automações e assistentes de IA para simplificar processos e poupar horas da rotina. Teria 10 minutinhos amanhã para uma rápida demonstração prática?"
+    return f"Olá {lead_name}! O Salesio Ninja atua com automações e assistentes de IA para simplificar processos e atendimento no WhatsApp. Como posso te ajudar?"
 
 async def process_lead_inbound_response(lead: dict, incoming_text: str, target_chat_id: str):
     lead_id = lead["id"]
@@ -1681,7 +1848,9 @@ async def process_lead_inbound_response(lead: dict, incoming_text: str, target_c
             pass
         return
 
-    # 3. Smart Handling: Courtesy / Farewell vs Simple Greeting vs Complex Response
+    # 3. Smart Handling: Booking Intent vs Courtesy / Farewell vs Simple Greeting vs Full Contextual AI
+    booking_res = await check_and_execute_calendar_booking(incoming_text, history_list, lead_name, phone)
+
     clean_words = re.sub(r'[^\w\s]', '', lower).split()
     clean_line = re.sub(r'[^\w\s]', '', lower).strip()
 
@@ -1691,12 +1860,15 @@ async def process_lead_inbound_response(lead: dict, incoming_text: str, target_c
         "show", "beleza", "combinado", "ok", "certo", "tranquilo", "perfeito", "abraço", "abracos",
         "tchau", "até mais", "ate mais", "agradeço", "obrigadão", "obrigadao"
     )
-    is_courtesy = any(w in lower for w in COURTESY_WORDS) and len(clean_words) <= 7
+    is_courtesy = not booking_res and any(w in lower for w in COURTESY_WORDS) and len(clean_words) <= 7
 
     GREETING_WORDS = ("bom dia", "boa tarde", "ola", "olá", "oi", "opa", "oii", "oiee", "tudo bem", "tudo bem?")
-    is_simple_greeting = clean_line in GREETING_WORDS or (len(clean_words) <= 3 and any(w in lower for w in GREETING_WORDS))
+    is_simple_greeting = not booking_res and (clean_line in GREETING_WORDS or (len(clean_words) <= 3 and any(w in lower for w in GREETING_WORDS)))
 
-    if is_courtesy:
+    if booking_res:
+        print(f"[Hermes SDR] Intenção de agendamento detectada para lead #{lead_id} ({phone}): {booking_res}")
+        ai_reply = await generate_sdr_reply(lead, incoming_text, history_list, booking_info=booking_res)
+    elif is_courtesy:
         print(f"[Hermes SDR] Mensagem de cortesia/despedida detectada de {phone}: '{incoming_text}'. Respondendo com gentileza sem pitch.")
         if any(k in lower for k in ("descanso", "boa noite")):
             ai_reply = "Obrigado, igualmente! Tenha um ótimo descanso! 😊"
@@ -1737,8 +1909,8 @@ async def process_lead_inbound_response(lead: dict, incoming_text: str, target_c
             print(f"[Hermes SDR] Falha ao enviar resposta IA: {res.text}")
 
     now_reply_iso = datetime.now().isoformat()
-    is_schedule = any(w in lower for w in ("marcar", "agendar", "reunião", "reuniao", "horário", "horario", "amanhã", "amanha", "quinta", "sexta", "às", "as ", "pode ser", "vamos"))
-    new_status = "SCHEDULED" if is_schedule else "REPLIED"
+    is_schedule = (booking_res and booking_res.get("success")) or any(w in lower for w in ("marcar", "agendar", "reunião", "reuniao", "horário", "horario", "pode ser", "vamos"))
+    new_status = "SCHEDULED" if (booking_res and booking_res.get("success")) else ("SCHEDULED" if is_schedule else "REPLIED")
 
     with get_db() as conn:
         conn.execute("""
@@ -1768,11 +1940,20 @@ async def process_lead_inbound_response(lead: dict, incoming_text: str, target_c
     })
 
     # 5. Alert Salesio Ninja on WhatsApp
-    status_header = "📅 *LEAD INTERESSADO EM AGENDAR!*" if is_schedule else "🔥 *HERMES SDR CONVERSANDO COM LEAD!*"
+    extra_cal_info = ""
+    if booking_res and booking_res.get("success"):
+        status_header = "📅 *NOVO COMPROMISSO AGENDADO NO GOOGLE CALENDAR!*"
+        extra_cal_info = f"🕐 *Horário Marcado:* {booking_res['date_arg']} às {booking_res['time_arg']}\n🔗 *Link:* {booking_res.get('calendar_link') or 'Agenda Google (suporteninja1@gmail.com)'}\n"
+    elif is_schedule:
+        status_header = "📅 *LEAD INTERESSADO EM AGENDAR!*"
+    else:
+        status_header = "🔥 *HERMES SDR CONVERSANDO COM LEAD!*"
+
     alert_msg = (
         f"{status_header}\n\n"
         f"👤 *Contato:* {lead_name} (+{phone})\n"
         f"🎯 *Campanha:* {camp_slug}\n"
+        f"{extra_cal_info}"
         f"💬 *Lead disse:* \"{incoming_text}\"\n"
         f"🤖 *Hermes respondeu:* \"{ai_reply}\"\n\n"
         f"📊 *Status:* {new_status}\n"
